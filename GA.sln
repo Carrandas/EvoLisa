@@ -1,13 +1,19 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 15
-VisualStudioVersion = 15.0.27703.2026
+# Visual Studio Version 18
+VisualStudioVersion = 18.1.11312.151 d18.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GAGUI", "GA\GAGUI.csproj", "{D5D01246-6735-47D2-B905-90583F5ED811}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GABase", "GABase\GABase.csproj", "{77AAA271-21FD-4147-B096-DEA0BD60F68A}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GABaseTests", "GaBaseTests\GABaseTests.csproj", "{A4399CE3-B9B5-4C54-B58E-34E57DAD4BC7}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "sln", "sln", "{D26D5DB0-5CFE-488F-BA43-E8CD207CE6EC}"
+	ProjectSection(SolutionItems) = preProject
+		.gitignore = .gitignore
+		README.md = README.md
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -33,21 +39,6 @@ Global
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {0258FC16-090F-46BD-89DD-05C92680095E}
-	EndGlobalSection
-	GlobalSection(TeamFoundationVersionControl) = preSolution
-		SccNumberOfProjects = 4
-		SccEnterpriseProvider = {4CA58AB2-18FA-4F8D-95D4-32DDF27D184C}
-		SccTeamFoundationServer = https://carrandas.visualstudio.com/
-		SccLocalPath0 = .
-		SccProjectUniqueName1 = GA\\GAGUI.csproj
-		SccProjectName1 = GA
-		SccLocalPath1 = GA
-		SccProjectUniqueName2 = GABase\\GABase.csproj
-		SccProjectName2 = GABase
-		SccLocalPath2 = GABase
-		SccProjectUniqueName3 = GaBaseTests\\GaBaseTests.csproj
-		SccProjectName3 = GaBaseTests
-		SccLocalPath3 = GaBaseTests
 	EndGlobalSection
 	GlobalSection(MercurialSourceControlSolutionProperties) = preSolution
 		SolutionIsControlled = False
