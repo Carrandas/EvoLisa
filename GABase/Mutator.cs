@@ -133,16 +133,13 @@ namespace GABase
             if (pop.chromosomes.Count < pop.MaximumSize)
             {
                 var chromosome = new Chromosome(Settings.MaxPolygonPointCount);
-                //chromosome.GenerateRandomChromosome();
-                //chromosome.GenerateRandomSmallChromosome();
                 chromosome.GenerateRandomSmallChromosome2(originalPictureBitmap);
                 var index = random.Next(pop.chromosomes.Count);
 
                 var chance2 = random.Next(2);
                 if (chance2 == 0 && pop.chromosomes.Count > 0)
                     chromosome.PolyColor = RandomGenerator.ChangeColor(pop.chromosomes[index].PolyColor);
-                //int index = RandomGenerator.GetRandomInt(pop.chromosomes.Count);
-                //pop.chromosomes.Insert(index, chromosome);
+
                 pop.chromosomes.Add(chromosome);
 	            pop.IsDirty = true;
 				pop.DirtyArea = GetDirtyArea(chromosome);

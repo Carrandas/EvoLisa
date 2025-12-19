@@ -20,6 +20,15 @@ namespace GABase
             _bitmap = fOriginalBitMap.Bitmap.Clone(new Rectangle(0, 0, fOriginalBitMap.Width, fOriginalBitMap.Height), PixelFormat.Format32bppArgb);
         }
 
+        /// <summary>
+        /// Select the most fit population between the two provided.
+        /// PercentageImprovement indicates how much better popA has to be compared to popB to be selected.
+        /// </summary>
+        /// <param name="popA"></param>
+        /// <param name="popB"></param>
+        /// <param name="fitnesse"></param>
+        /// <param name="percentageImprovement"></param>
+        /// <returns></returns>
         public Population SelectPopulation(
             Population popA,
             Population popB,
@@ -28,23 +37,18 @@ namespace GABase
         {
             long fitnesseA, fitnesseB;
 
-	        fitnesseA = CalculateFitness(
+	        fitnesseA = CalculateFitnesse(
 		        popA,
 		        popB.DirtyArea.X,
 		        popB.DirtyArea.Y,
 		        popB.DirtyArea.X + popB.DirtyArea.Width,
 		        popB.DirtyArea.Y + popB.DirtyArea.Height);
-	        fitnesseB = CalculateFitness(
+	        fitnesseB = CalculateFitnesse(
 		        popB,
 		        popB.DirtyArea.X,
 		        popB.DirtyArea.Y,
 		        popB.DirtyArea.X + popB.DirtyArea.Width,
 		        popB.DirtyArea.Y + popB.DirtyArea.Height);
-
-         //       var fitnesseA2 = CalculateFitness(popA);
-         //       var fitnesseB2 = CalculateFitness(popB);
-	        //if (fitnesseA < fitnesseB && fitnesseA2 > fitnesseB2) throw new ArgumentException();
-	        //if (fitnesseA > fitnesseB && fitnesseA2 < fitnesseB2) throw new ArgumentException();
 
 			if (fitnesseA < (fitnesseB * (1.0 + (percentageImprovement / 100.0))))
             {
@@ -58,29 +62,11 @@ namespace GABase
             }
         }        
 
-        public long CalculateFitness2(Population pop)
-        {
-            long fitnesse = 0;
-            using (FastBitmap generatedPicture = new FastBitmap(pop.GetPicture()))
-            {
-                for (int x = 0; x < Settings.ScreenWidth; x++)
-                {
-                    for (int y = 0; y < Settings.ScreenHeight; y++)
-                    {
-                        var originalColor = _resizedOriginalImage.GetPixelTuple(x, y);
-                        var generatedColor = generatedPicture.GetPixelTuple(x, y);
-                        long diffR = originalColor.red - generatedColor.red;
-                        long diffB = originalColor.blue - generatedColor.blue;
-                        long diffG = originalColor.green - generatedColor.green;
-                        fitnesse += (diffB * diffB + diffG * diffG + diffR * diffR);
-                        //fitnesse *= fitnesse;//Needed???
-                    }
-                }
-            }
-
-            return fitnesse;
-        }
-
+        /// <summary>
+        /// Calculates the fitness of the full image.
+        /// </summary>
+        /// <param name="pop"></param>
+        /// <returns></returns>
         public long CalculateFitness(Population pop)
         {
             long fitnesse = 0;
@@ -119,37 +105,18 @@ namespace GABase
             return fitnesse;
         }
 
-        private long CalculateFitness2(Population pop,
-                                      int minX,
-                                      int minY,
-                                      int maxX,
-                                      int maxY)
-        {
-            long fitnesse = 0;
-            using (FastBitmap generatedPicture = new FastBitmap(pop.GetPicture(minX, minY, maxX, maxY)))
-            {
-                //Compare
-
-                for (int x = minX; x <= maxX; x++)
-                {
-                    for (int y = minY; y <= maxY; y++)
-                    {
-                        var originalColor = _resizedOriginalImage.GetPixelTuple(x, y);
-                        var generatedColor = generatedPicture.GetPixelTuple(x, y);
-                        long diffR = originalColor.red - generatedColor.red;
-                        long diffG = originalColor.green - generatedColor.green;
-                        long diffB = originalColor.blue - generatedColor.blue;
-                        fitnesse += (diffB * diffB + diffG * diffG + diffR * diffR);
-                        //fitnesse *= fitnesse;//Needed???
-                    }
-                }
-            }
-
-            return fitnesse;
-        }
 
         private Bitmap _bmp;
-        private long CalculateFitness(Population pop,
+        /// <summary>
+        /// Calculates the fitnesse. But only for a part of the image!
+        /// </summary>
+        /// <param name="pop"></param>
+        /// <param name="minX"></param>
+        /// <param name="minY"></param>
+        /// <param name="maxX"></param>
+        /// <param name="maxY"></param>
+        /// <returns></returns>
+        private long CalculateFitnesse(Population pop,
                               int minX,
                               int minY,
                               int maxX,
