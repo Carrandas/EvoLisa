@@ -124,9 +124,7 @@ namespace GABase
 
                     if (_stopwatch.ElapsedMilliseconds > _lastUpdate + 2500)
                     {
-                        var currentFitnesse = _selector.CalculateFitness(_popA);
-
-                        var differenceImage = DifferencePicture.GetDifferencePicture(_popA, _originalPictureBitmap);
+                        var (differenceImage, currentFitnesse) = DifferencePicture.GetDifferencePictureWithFitness(_popA, _originalPictureBitmap);
 
                         var generatedImage = new Bitmap(_popA.GetPicture(), _targetImage.Width, _targetImage.Height);
 
