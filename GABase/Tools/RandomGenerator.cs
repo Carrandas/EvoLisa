@@ -6,6 +6,7 @@ namespace GABase
     public static class RandomGenerator
     {
         private static readonly Random random = new Random();
+        private static readonly object lockObj = new object();
 
         public static Color GetRandomColor()
         {
@@ -47,7 +48,7 @@ namespace GABase
                         b = b - 255;
                     break;
                 case 3:
-                    a+= GetRandomInt(50) - 25;
+                    a += GetRandomInt(50) - 25;
                     if (a < 0)
                         a = 255 + a;
                     else if (a > 255)
@@ -105,16 +106,12 @@ namespace GABase
 
         public static long GetRandomLong(long max)
         {
-            long randomValue = 0;
-
-            while (max > Int32.MaxValue)
+            lock (lockObj)
             {
-                randomValue += GetRandomInt(Int32.MaxValue);
-                max -= Int32.MaxValue;
+                if (max <= int.MaxValue)
+                    return random.Next((int)max);
+                return (long)(random.NextDouble() * max);
             }
-            randomValue += GetRandomInt((int)max);
-
-            return randomValue;
         }
     }
 }
