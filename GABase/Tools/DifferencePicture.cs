@@ -2,6 +2,7 @@
 
 using System;
 using System.Drawing;
+using System.Threading.Tasks;
 using GABase;
 
 #endregion
@@ -24,15 +25,18 @@ namespace GAgeneratedImagese.Tools
 
             Bitmap bC = new Bitmap(generatedImage.Width, generatedImage.Height);
             long total = 0;
+            int width = generatedImage.Width;
+            int height = generatedImage.Height;
 
             using (FastBitmap fgeneratedImage = new FastBitmap(generatedImage))
             {
-
                 FastBitmap fbC = new FastBitmap(bC);
 
-                for (int x = 0; x < generatedImage.Width; x++)
+                var rowTotals = new long[height];
+                Parallel.For(0, height, y =>
                 {
-                    for (int y = 0; y < generatedImage.Height; y++)
+                    long rowTotal = 0;
+                    for (int x = 0; x < width; x++)
                     {
                         var originalColor = fgeneratedImage.GetPixelTuple(x, y);
                         var generatedColor = foriginalImage.GetPixelTuple(x, y);
@@ -42,15 +46,21 @@ namespace GAgeneratedImagese.Tools
                         var diffB = Math.Abs(originalColor.blue - generatedColor.blue);
 
                         int a = diffR + diffG + diffB;
-                        int diff = (int) (a/3);
+                        int diff = (int)(a / 3);
                         fbC.SetPixel(x, y, Color.FromArgb(diff, diff, diff));
 
-                        total += a*a;
-                        Differences[x, y] = total;
+                        rowTotal += a * a;
+                        Differences[x, y] = rowTotal;
                     }
-                }
-                fbC.Release();
+                    rowTotals[y] = rowTotal;
+                });
 
+                foreach (var rowSum in rowTotals)
+                {
+                    total += rowSum;
+                }
+
+                fbC.Release();
                 bC = fbC.Bitmap;
             }
 
