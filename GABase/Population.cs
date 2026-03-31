@@ -61,10 +61,11 @@ namespace GABase
                         colorBrushes[chromosome.PolyColor] = brush;
                     }
                     
+                    var points = chromosome.PolygonArray;
                     if (Settings.Polygon == Settings.PolygonType.Lines)
-                        graphics.FillPolygon(brush, chromosome.Polygon.ToArray());
+                        graphics.FillPolygon(brush, points);
                     else
-                        graphics.FillClosedCurve(brush, chromosome.Polygon.ToArray());
+                        graphics.FillClosedCurve(brush, points);
                 }
                 
                 foreach (var cachedBrush in colorBrushes.Values)
@@ -96,10 +97,11 @@ namespace GABase
                             colorBrushes[chromosome.PolyColor] = brush;
                         }
                         
+                        var points = chromosome.PolygonArray;
                         if (Settings.Polygon == Settings.PolygonType.Lines)
-                            graphics.FillPolygon(brush, chromosome.Polygon.ToArray());
+                            graphics.FillPolygon(brush, points);
                         else
-                            graphics.FillClosedCurve(brush, chromosome.Polygon.ToArray());
+                            graphics.FillClosedCurve(brush, points);
                     }
                 }
                 

@@ -107,6 +107,8 @@ namespace GABase
             chromosome.Polygon[index] = new Point(p.X, p.Y);
 
 	        pop.DirtyArea = GetDirtyArea(pop.DirtyArea, chromosome);
+
+			chromosome.UpdatePolygonArray();
         }
 
 	    public void SwitchChromosomes(Population pop)
@@ -206,6 +208,8 @@ namespace GABase
 					chromosome.Polygon.Insert(polygonIndex + 1, newPoint);
 
 	                pop.DirtyArea = GetDirtyArea(pop.DirtyArea, chromosome);
+
+                    chromosome.UpdatePolygonArray();
                 }
             }
         }
@@ -225,6 +229,8 @@ namespace GABase
                     chromosome.Polygon.RemoveAt(polygonIndex);
 
 	                pop.DirtyArea = GetDirtyArea(pop.DirtyArea, chromosome);
+
+                    chromosome.UpdatePolygonArray();
 				}
             }
         }

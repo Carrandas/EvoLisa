@@ -7,8 +7,8 @@ namespace GABase
 {
     public class Chromosome
     {
-        //public Point[] Polygon { get; set; }
         public List<Point> Polygon { get; set; }
+        public Point[] PolygonArray { get; private set; }
         public Color PolyColor { get; set; }
         private readonly int _size;
 
@@ -16,6 +16,12 @@ namespace GABase
         {
             _size = size;
             Polygon = new List<Point>(size);
+            PolygonArray = Array.Empty<Point>();
+        }
+
+        public void UpdatePolygonArray()
+        {
+            PolygonArray = Polygon.ToArray();
         }
 
         public void GenerateRandomChromosome()
@@ -27,6 +33,7 @@ namespace GABase
                 Polygon.Insert(i, new Point(x, y));
             }
             PolyColor = RandomGenerator.GetRandomColor();
+            UpdatePolygonArray();
         }
 
         public void GenerateRandomSmallChromosome()
@@ -57,6 +64,7 @@ namespace GABase
                 Polygon.Insert(i, p);
             }
             PolyColor = RandomGenerator.GetRandomColor();
+            UpdatePolygonArray();
         }
 
         public void GenerateRandomSmallChromosome2(FastBitmap originalPictureBitmap)
@@ -100,7 +108,8 @@ namespace GABase
                 //PolyColor = RandomGenerator.GetRandomColor();
                 PolyColor = RandomGenerator.ChangeColor(originalPictureBitmap.GetPixel(p1.X, p1.Y));
             }
-    }
+            UpdatePolygonArray();
+        }
 
         private Point GetPoint()
         {
@@ -133,6 +142,7 @@ namespace GABase
             Chromosome chromosome = new Chromosome(_size);
             chromosome.PolyColor = PolyColor;
             chromosome.Polygon.AddRange(Polygon);
+            chromosome.PolygonArray = (Point[])PolygonArray.Clone();
             return chromosome;
         }
     }
