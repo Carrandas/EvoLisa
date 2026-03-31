@@ -8,6 +8,14 @@ namespace GABase
 {
     public class Evolver
     {
+        private class MutationStats
+        {
+            public long Attempts;
+            public long Successes;
+            public double Weight;
+            public double SuccessRate => Attempts > 0 ? (double)Successes / Attempts : 0.01;
+        }
+
         private FastBitmap _originalPictureBitmap;
         private readonly Bitmap _targetImage;
         private Population _popA;
@@ -19,6 +27,9 @@ namespace GABase
         private long _previousFitnesse = long.MaxValue;
         private readonly Stopwatch _stopwatch;
         private long _lastUpdate;
+
+        private MutationStats[] _mutationStats;
+        private readonly object _statsLock = new object();
 
         public event Action<Bitmap, long, Population, int, Image, long, int> PopulationUpdated;
 
@@ -37,6 +48,17 @@ namespace GABase
             _originalPictureBitmap = new FastBitmap((Bitmap)(resizedBitmap.Clone()));
             _selector = new Selector(_originalPictureBitmap);
             _mutator = new Mutator();
+
+            _mutationStats = new MutationStats[]
+            {
+                new MutationStats(),
+                new MutationStats(),
+                new MutationStats(),
+                new MutationStats(),
+                new MutationStats(),
+                new MutationStats(),
+                new MutationStats()
+            };
         }
 
         public Population CurrentPopulation => _popA;
@@ -77,6 +99,7 @@ namespace GABase
             _popA.chromosomes.Add(chromosome);
             chromosome.GenerateRandomChromosome();
 
+            long currentFitness = long.MaxValue;
             Population popB;
 
             while (true)
@@ -85,36 +108,34 @@ namespace GABase
 
                 popB = _popA.Clone();
 
-                int mutation = RandomGenerator.GetRandomInt(100);
-                if (mutation < 20)
+                var selectedMutation = SelectWeightedMutation();
+                MutationType mutationType = selectedMutation;
+
+                switch (selectedMutation)
                 {
-                    _mutator.Recolor(popB);
-                }
-                else if (mutation < 89)
-                {
-                    _mutator.ChangePoint(popB);
-                }
-                else if (mutation < 92)
-                {
-                    _mutator.AddPolygonPoint(popB);
-                }
-                else if (mutation < 95)
-                {
-                    _mutator.RemovePolygonPoint(popB);
-                }
-                else if (mutation < 98)
-                {
-                    _mutator.SwitchChromosomes(popB);
-                }
-                else if (mutation < 99)
-                {
-                    _mutator.AddChromosome(popB, _originalPictureBitmap);
-                    improvedPercentage = 1;
-                }
-                else if (mutation < 100)
-                {
-                    improvedPercentage = -1;
-                    _mutator.RemoveChromosome(popB);
+                    case MutationType.Recolor:
+                        _mutator.Recolor(popB);
+                        break;
+                    case MutationType.ChangePoint:
+                        _mutator.ChangePoint(popB);
+                        break;
+                    case MutationType.AddPolygonPoint:
+                        _mutator.AddPolygonPoint(popB);
+                        break;
+                    case MutationType.RemovePolygonPoint:
+                        _mutator.RemovePolygonPoint(popB);
+                        break;
+                    case MutationType.SwitchChromosomes:
+                        _mutator.SwitchChromosomes(popB);
+                        break;
+                    case MutationType.AddChromosome:
+                        _mutator.AddChromosome(popB, _originalPictureBitmap);
+                        improvedPercentage = 1;
+                        break;
+                    case MutationType.RemoveChromosome:
+                        improvedPercentage = -1;
+                        _mutator.RemoveChromosome(popB);
+                        break;
                 }
 
                 if (popB.IsDirty)
@@ -122,17 +143,21 @@ namespace GABase
                     popB.IsDirty = false;
                     _popA = _selector.SelectPopulation(_popA, popB, out var newPartialFitnesse, improvedPercentage);
 
+                    bool improved = newPartialFitnesse < currentFitness;
+                    RecordMutationResult(mutationType, improved);
+                    currentFitness = newPartialFitnesse;
+
                     if (_stopwatch.ElapsedMilliseconds > _lastUpdate + 2500)
                     {
-                        var (differenceImage, currentFitnesse) = DifferencePicture.GetDifferencePictureWithFitness(_popA, _originalPictureBitmap);
+                        var (differenceImage, fitnesse) = DifferencePicture.GetDifferencePictureWithFitness(_popA, _originalPictureBitmap);
 
                         var generatedImage = new Bitmap(_popA.GetPicture(), _targetImage.Width, _targetImage.Height);
 
-                        PopulationUpdated?.Invoke(generatedImage, currentFitnesse, _popA, _generation, differenceImage, _stopwatch.ElapsedMilliseconds, _resizeFactor);
+                        PopulationUpdated?.Invoke(generatedImage, fitnesse, _popA, _generation, differenceImage, _stopwatch.ElapsedMilliseconds, _resizeFactor);
 
-                        HandleResize(currentFitnesse);
+                        HandleResize(fitnesse);
 
-                        _previousFitnesse = currentFitnesse;
+                        _previousFitnesse = fitnesse;
                         _lastUpdate = _stopwatch.ElapsedMilliseconds;
                     }
                 }
@@ -179,6 +204,53 @@ namespace GABase
                 }
 
                 DifferencePicture.GetDifferencePicture(_popA, _originalPictureBitmap);
+            }
+        }
+
+        public enum MutationType
+        {
+            Recolor,
+            ChangePoint,
+            AddPolygonPoint,
+            RemovePolygonPoint,
+            SwitchChromosomes,
+            AddChromosome,
+            RemoveChromosome
+        }
+
+        private MutationType SelectWeightedMutation()
+        {
+            const double baselineWeight = 1.0;
+            const double successWeight = 10.0;
+
+            double totalWeight = 0;
+            for (int i = 0; i < _mutationStats.Length; i++)
+            {
+                double weight = baselineWeight + (_mutationStats[i].SuccessRate * successWeight);
+                _mutationStats[i].Weight = weight;
+                totalWeight += weight;
+            }
+
+            double randomValue = RandomGenerator.GetRandomInt(10000) / 10000.0 * totalWeight;
+            double cumulative = 0;
+
+            for (int i = 0; i < _mutationStats.Length; i++)
+            {
+                cumulative += _mutationStats[i].Weight;
+                if (randomValue <= cumulative)
+                    return (MutationType)i;
+            }
+
+            return MutationType.ChangePoint;
+        }
+
+        private void RecordMutationResult(MutationType type, bool improved)
+        {
+            lock (_statsLock)
+            {
+                _mutationStats[(int)type].Attempts++;
+                if (improved)
+                    _mutationStats[(int)type].Successes++;
             }
         }
     }
