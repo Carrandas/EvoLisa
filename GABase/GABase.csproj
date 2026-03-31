@@ -81,6 +81,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Chromosome.cs" />
+    <Compile Include="Evolver.cs" />
     <Compile Include="Mutator.cs" />
     <Compile Include="Population.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

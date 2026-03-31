@@ -1,152 +1,20 @@
 ﻿using System;
-using System.ComponentModel;
-using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 using GABase;
-using GAgeneratedImagese.Tools;
 
 namespace GA
 {
     public partial class frmGA : Form
     {
+        Evolver _evolver;
+
         public frmGA()
         {
             InitializeComponent();
-
-            worker = new Thread(worker_DoWork);
-            worker.Priority = ThreadPriority.Normal;
-        }
-
-        private void worker_DoWork()
-        {
-            worker_DoWork(this, new DoWorkEventArgs(null));
-        }
-
-        Population popA;
-        private void worker_DoWork(object sender, DoWorkEventArgs e)
-        {
-            Stopwatch sw = new Stopwatch();
-            sw.Start();
-            long lastUpdate = sw.ElapsedMilliseconds;
-
-	        var resizeFactor = 4;
-            var resizedBitmap = new Bitmap(pictureBoxOriginal.Image,
-			 new Size(pictureBoxOriginal.Image.Width / resizeFactor, pictureBoxOriginal.Image.Height / resizeFactor));
-			Settings.ScreenWidth = resizedBitmap.Width;
-			Settings.ScreenHeight = resizedBitmap.Height;
-
-
-			FastBitmap originalPictureBitmap = new FastBitmap((Bitmap)((resizedBitmap).Clone()));
-			//FastBitmap originalPictureBitmap = new FastBitmap((Bitmap)((pictureBoxOriginal.Image).Clone()));
-
-	        popA = new Population(Settings.MaxPolygonCount);
-	        popA.GenerateRandomChromosomes();
-	        Chromosome chromosome = new Chromosome(Settings.MaxPolygonPointCount);
-	        popA.chromosomes.Add(chromosome);
-	        chromosome.GenerateRandomChromosome();
-
-			Population popB;
-
-			Selector selector = new Selector(originalPictureBitmap);
-            Mutator mutator = new Mutator();
-	        long previousFitnesse = long.MaxValue;
-			int generation = 1;
-            while (true)
-            {
-                double improvedPercentage = 0.0;
-
-                popB = popA.Clone();
-
-                int mutation = RandomGenerator.GetRandomInt(100);
-                if (mutation < 20)
-                {
-                    mutator.Recolor(popB);
-                }
-                else if (mutation < 89)
-                {
-                    mutator.ChangePoint(popB);
-                }
-                else if (mutation < 92)
-                {
-                    mutator.AddPolygonPoint(popB);
-                    //improvedPercentage = 5;
-                }
-                else if (mutation < 95)
-                {
-                    mutator.RemovePolygonPoint(popB);
-                }
-                else if (mutation < 98)
-                {
-                    mutator.SwitchChromosomes(popB);
-                }
-                else if (mutation < 99)
-                {
-                    mutator.AddChromosome(popB, originalPictureBitmap);
-                    improvedPercentage = 1;
-                }
-                else if (mutation < 100)
-                {
-                    improvedPercentage = -1;
-                    mutator.RemoveChromosome(popB);
-                }
-                else
-                {
-                    throw new NotImplementedException();
-                }
-
-                if (popB.IsDirty)
-                {
-                    popB.IsDirty = false;
-                    popA = selector.SelectPopulation(popA, popB, out var newPartialFitnesse, improvedPercentage);
-
-					if (sw.ElapsedMilliseconds > lastUpdate + 2500)
-					{
-	                    var currentFitnesse = selector.CalculateFitness(popA);
-                        //var currentFitnesse = newPartialFitnesse;
-
-                        UpdateGui(new Bitmap(popA.GetPicture(), pictureBoxOriginal.Width, pictureBoxOriginal.Height), currentFitnesse, popA, generation, DifferencePicture.GetDifferencePicture(popA, originalPictureBitmap), sw.ElapsedMilliseconds, resizeFactor);
-                        lastUpdate = sw.ElapsedMilliseconds;
-						if (previousFitnesse > 0 &&
-                            (previousFitnesse - currentFitnesse) * 1.0 / previousFitnesse < 0.0001 && resizeFactor > 1)
-						{
-							resizeFactor /= 2;
-							if (resizeFactor > 1)
-							{
-								resizedBitmap = new Bitmap(pictureBoxOriginal.Image,
-									new Size(pictureBoxOriginal.Image.Width / resizeFactor,
-										pictureBoxOriginal.Image.Height / resizeFactor));
-							}
-							else
-							{
-								resizedBitmap = new Bitmap(pictureBoxOriginal.Image);
-							}
-							originalPictureBitmap = new FastBitmap((Bitmap)((resizedBitmap).Clone()));
-
-							Settings.ScreenWidth = resizedBitmap.Width;
-							Settings.ScreenHeight = resizedBitmap.Height;
-							selector = new Selector(new FastBitmap((Bitmap)((resizedBitmap).Clone())));
-							foreach (var c in popA.chromosomes)
-							{
-								for (var index = 0; index < c.Polygon.Count; index++)
-								{
-									var p = c.Polygon[index];
-									c.Polygon[index] = new Point(Math.Min(p.X * 2, Settings.ScreenWidth), Math.Min(p.Y * 2, Settings.ScreenHeight));
-								}
-							}
-							DifferencePicture.GetDifferencePicture(popA, originalPictureBitmap);
-                            currentFitnesse = 0;//Reset to 0 after resize, can't compare fitnesses of <> resizeFactors.
-                        }
-
-						previousFitnesse = currentFitnesse;
-					}
-                }
-
-                generation++;
-            }
         }
 
         private void UpdateGui(Image img, long fitnesse, Population pop, int generation, Image differenceImage,long swElapsedMilliseconds, int zoomLevel)
@@ -194,23 +62,24 @@ namespace GA
             }
         }
 
-        private Thread worker;
         private void btnStart_Click(object sender, EventArgs e)
         {
-            if(!worker.IsAlive)
+            if (_evolver == null || !IsEvolverRunning())
             {
-                worker.Start();
-                //BackgroundWorker worker = new BackgroundWorker();
-                //worker.DoWork += worker_DoWork;
-                //worker.RunWorkerAsync();
+                _evolver = new Evolver((Bitmap)pictureBoxOriginal.Image);
+                _evolver.Priority = ThreadPriority.Normal;
+                _evolver.PopulationUpdated += UpdateGui;
+                _evolver.Start();
                 btnStart.Text = "Stop";
             }
             else
             {
-                worker.Abort();
+                _evolver.Stop();
                 btnStart.Text = "Start";
             }
         }
+
+        private bool IsEvolverRunning() => _evolver != null && _evolver.CurrentPopulation != null;
 
         #region Nested type: UpdateGuiDelegate
 
@@ -227,47 +96,47 @@ namespace GA
         }
         private void lowestToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            worker.Priority = ThreadPriority.Lowest;
+            _evolver.Priority = ThreadPriority.Lowest;
             UncheckPriorityMenuItems();
             lowestToolStripMenuItem.Checked = true;
         }
 
         private void highestToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            worker.Priority = ThreadPriority.Highest;
+            _evolver.Priority = ThreadPriority.Highest;
             UncheckPriorityMenuItems();
             highestToolStripMenuItem.Checked = true;
         }
 
         private void aboveNormalToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            worker.Priority = ThreadPriority.AboveNormal;
+            _evolver.Priority = ThreadPriority.AboveNormal;
             UncheckPriorityMenuItems();
             aboveNormalToolStripMenuItem.Checked = true;
         }
 
         private void normalToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            worker.Priority = ThreadPriority.Normal;
+            _evolver.Priority = ThreadPriority.Normal;
             UncheckPriorityMenuItems();
             normalToolStripMenuItem.Checked = true;
         }
 
         private void belowNormalToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            worker.Priority = ThreadPriority.BelowNormal;
+            _evolver.Priority = ThreadPriority.BelowNormal;
             UncheckPriorityMenuItems();
             belowNormalToolStripMenuItem.Checked = true;
         }
 
         private void frmGA_FormClosing(object sender, FormClosingEventArgs e)
         {
-            worker.Abort();
+            _evolver?.Stop();
         }
 
         private void saveImagesToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            var pop = popA.Clone();
+            var pop = _evolver.CurrentPopulation.Clone();
             StringBuilder b = new StringBuilder();
             b.AppendLine(
                 @"<?xml version=""1.0"" standalone=""no""?>
