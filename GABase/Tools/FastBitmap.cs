@@ -16,9 +16,10 @@ namespace GABase
 
         public struct PixelData
         {
-            public byte blue;
-            public byte green;
-            public byte red;
+            public byte B;
+            public byte G;
+            public byte R;
+            public byte A;
         }
 
         public FastBitmap(Bitmap SubjectBitmap)
@@ -58,9 +59,10 @@ namespace GABase
             try
             {
                 PixelData* p = PixelAt(X, Y);
-                p->red = Colour.R;
-                p->green = Colour.G;
-                p->blue = Colour.B;
+                p->R = Colour.R;
+                p->G = Colour.G;
+                p->B = Colour.B;
+                p->A = Colour.A;
             }
             catch (AccessViolationException ave)
             {
@@ -78,9 +80,10 @@ namespace GABase
             {
                 PixelData* p = PixelAt(X, Y);
                 return Color.FromArgb(
-                    (int)p->red,
-                    (int)p->green,
-                    (int)p->blue);
+                    (int)p->A,
+                    (int)p->R,
+                    (int)p->G,
+                    (int)p->B);
             }
             catch (AccessViolationException ave)
             {
@@ -97,10 +100,6 @@ namespace GABase
             try
             {
                 PixelData* p = PixelAt(X, Y);
-                //return new Tuple<byte, byte, byte>
-                //(   p->red,
-                //    p->green,
-                //    p->blue);
                 return *p;
             }
             catch (AccessViolationException ave)
@@ -131,7 +130,7 @@ namespace GABase
             {
                 SubjectWidth = 4 * (SubjectWidth / 4 + 1);
             }
-            bitmapData = Subject.LockBits(bounds, ImageLockMode.ReadWrite, PixelFormat.Format24bppRgb);
+            bitmapData = Subject.LockBits(bounds, ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
             pBase = (Byte*)bitmapData.Scan0.ToPointer();
         }
 

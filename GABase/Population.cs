@@ -21,30 +21,70 @@ namespace GABase
             chromosomes = new List<Chromosome>();
         }
 
+        private Bitmap _cachedPicture;
+        private Rectangle _cachedDirtyArea;
+        private bool _isDirty = true;
+        private int _cachedWidth;
+        private int _cachedHeight;
+
         public int MaximumSize { get; }
         public bool IsDirty { get; set; }
 		public Rectangle DirtyArea { get; set; }
 
-        public void GenerateRandomChromosomes()
+        public void MarkDirty()
         {
-            for (int i = 0; i < chromosomes.Count; i++)
-            {
-                chromosomes[i] = new Chromosome(Settings.MaxPolygonPointCount);
-                chromosomes[i].GenerateRandomChromosome();
-            }
+            _isDirty = true;
+            _cachedPicture?.Dispose();
+            _cachedPicture = null;
         }
 
-        public Population Clone()
+        public void InvalidateCache()
         {
-            Population pop = new Population(MaximumSize);
-            for (int i = 0; i < chromosomes.Count; i++)
-            {
-                pop.chromosomes.Insert(i, chromosomes[i].Clone());
-            }
-            return pop;
+            _cachedPicture?.Dispose();
+            _cachedPicture = null;
+            _isDirty = true;
         }
 
         public Bitmap GetPicture()
+        {
+            if (_cachedPicture == null || _isDirty || _cachedWidth != Settings.ScreenWidth || _cachedHeight != Settings.ScreenHeight)
+            {
+                _cachedPicture?.Dispose();
+                _cachedPicture = CreateBitmap();
+                _cachedDirtyArea = new Rectangle(0, 0, Settings.ScreenWidth, Settings.ScreenHeight);
+                _cachedWidth = Settings.ScreenWidth;
+                _cachedHeight = Settings.ScreenHeight;
+                _isDirty = false;
+            }
+            return new Bitmap(_cachedPicture);
+        }
+
+        public Bitmap GetPicture(int minX, int minY, int maxX, int maxY)
+        {
+            if (_cachedPicture == null || _isDirty || _cachedWidth != Settings.ScreenWidth || _cachedHeight != Settings.ScreenHeight)
+            {
+                _cachedPicture?.Dispose();
+                _cachedPicture = CreateBitmap();
+                _cachedDirtyArea = new Rectangle(0, 0, Settings.ScreenWidth, Settings.ScreenHeight);
+                _cachedWidth = Settings.ScreenWidth;
+                _cachedHeight = Settings.ScreenHeight;
+                _isDirty = false;
+            }
+
+            if (minX == 0 && minY == 0 && maxX == Settings.ScreenWidth && maxY == Settings.ScreenHeight)
+            {
+                return new Bitmap(_cachedPicture);
+            }
+
+            Bitmap bitmap = new Bitmap(Settings.ScreenWidth, Settings.ScreenHeight, PixelFormat.Format32bppArgb);
+            using (Graphics graphics = Graphics.FromImage(bitmap))
+            {
+                graphics.DrawImage(_cachedPicture, 0, 0);
+            }
+            return bitmap;
+        }
+
+        private Bitmap CreateBitmap()
         {
             Bitmap bitmap = new Bitmap(Settings.ScreenWidth, Settings.ScreenHeight, PixelFormat.Format32bppArgb);
             using (Graphics graphics = Graphics.FromImage(bitmap))
@@ -52,7 +92,7 @@ namespace GABase
                 graphics.Clear(Color.Black);
                 foreach (Chromosome chromosome in chromosomes)
                 {
-                    using (var brush =  new SolidBrush(chromosome.PolyColor))
+                    using (var brush = new SolidBrush(chromosome.PolyColor))
                     {
                         if (Settings.Polygon == Settings.PolygonType.Lines)
                             graphics.FillPolygon(brush, chromosome.Polygon.ToArray());
@@ -64,30 +104,25 @@ namespace GABase
             return bitmap;
         }
 
-        public Bitmap GetPicture(int minX, int minY, int maxX, int maxY)
+        public void GenerateRandomChromosomes()
         {
-            Bitmap bitmap = new Bitmap(Settings.ScreenWidth, Settings.ScreenHeight, PixelFormat.Format32bppArgb);
-            using (Graphics graphics = Graphics.FromImage(bitmap))
+            for (int i = 0; i < chromosomes.Count; i++)
             {
-                var boundingRectangle = new Rectangle(minX, minY, maxX-minX, maxY-minY);
-                graphics.SetClip(boundingRectangle);
-                graphics.Clear(Color.Black);
-                foreach (Chromosome chromosome in chromosomes)
-                {
-                    if (PolygonInRectangle(boundingRectangle, chromosome.Polygon))
-                    //Doesn't seem to improve the performance a lot.
-                    {
-                        using (SolidBrush brush = new SolidBrush(chromosome.PolyColor))
-                        {
-                            if (Settings.Polygon == Settings.PolygonType.Lines)
-                                graphics.FillPolygon(brush, chromosome.Polygon.ToArray());
-                            else
-                                graphics.FillClosedCurve(brush, chromosome.Polygon.ToArray());
-                        }
-                    }
-                }
+                chromosomes[i] = new Chromosome(Settings.MaxPolygonPointCount);
+                chromosomes[i].GenerateRandomChromosome();
             }
-            return bitmap;
+            MarkDirty();
+        }
+
+        public Population Clone()
+        {
+            Population pop = new Population(MaximumSize);
+            for (int i = 0; i < chromosomes.Count; i++)
+            {
+                pop.chromosomes.Insert(i, chromosomes[i].Clone());
+            }
+            pop.MarkDirty();
+            return pop;
         }
 
         /// <summary>

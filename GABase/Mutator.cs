@@ -19,6 +19,7 @@ namespace GABase
             pop.IsDirty = true;
 	        pop.DirtyArea = GetDirtyArea(chromosome);
             chromosome.PolyColor = RandomGenerator.ChangeColor(chromosome.PolyColor);
+            pop.MarkDirty();
         }
 
 	    private Rectangle GetDirtyArea(Chromosome chromosome)
@@ -107,6 +108,7 @@ namespace GABase
             chromosome.Polygon[index] = new Point(p.X, p.Y);
 
 	        pop.DirtyArea = GetDirtyArea(pop.DirtyArea, chromosome);
+            pop.MarkDirty();
         }
 
 	    public void SwitchChromosomes(Population pop)
@@ -125,6 +127,7 @@ namespace GABase
 			    pop.IsDirty = true;
 				pop.DirtyArea = GetDirtyArea(chromosome1);
 			    pop.DirtyArea = GetDirtyArea(pop.DirtyArea, chromosome2);
+                pop.MarkDirty();
 		    }
 	    }
 
@@ -143,6 +146,7 @@ namespace GABase
                 pop.chromosomes.Add(chromosome);
 	            pop.IsDirty = true;
 				pop.DirtyArea = GetDirtyArea(chromosome);
+                pop.MarkDirty();
 			}
 		}
 
@@ -154,7 +158,8 @@ namespace GABase
 	            pop.IsDirty = true;
 				pop.DirtyArea = GetDirtyArea(pop.chromosomes[index]);
 				pop.chromosomes.RemoveAt(index);
-            }
+                pop.MarkDirty();
+            	}
 		}
 
         public void AddPolygonPoint(Population pop)
@@ -165,7 +170,6 @@ namespace GABase
 
                 if (chromosomesWithoutMaxPolygons.Count > 0)
                 {
-                    //pop.chromosomes.Add(chromosome);
                     var chromosomeIndex = random.Next(chromosomesWithoutMaxPolygons.Count);
                     var chromosome = chromosomesWithoutMaxPolygons[chromosomeIndex];
 
@@ -177,7 +181,7 @@ namespace GABase
                     var midY = Math.Min(previousPoint.Y, nextPoint.Y) + Math.Abs(previousPoint.Y - nextPoint.Y) / 2;
 
                     var positionChance = random.Next(2);
-                    var positionChange = random.Next(10) + 1;//1 > 11
+                    var positionChange = random.Next(10) + 1;
                     Point newPoint;
                     if (positionChance == 0)
                     {
@@ -206,6 +210,7 @@ namespace GABase
 					chromosome.Polygon.Insert(polygonIndex + 1, newPoint);
 
 	                pop.DirtyArea = GetDirtyArea(pop.DirtyArea, chromosome);
+                    pop.MarkDirty();
                 }
             }
         }
@@ -225,6 +230,7 @@ namespace GABase
                     chromosome.Polygon.RemoveAt(polygonIndex);
 
 	                pop.DirtyArea = GetDirtyArea(pop.DirtyArea, chromosome);
+                    pop.MarkDirty();
 				}
             }
         }

@@ -9,15 +9,25 @@ using System.Linq;
 
 namespace GABase
 {
-    public class Selector
+    public class Selector : IDisposable
     {
         private readonly FastBitmap _resizedOriginalImage;
         private readonly Bitmap _bitmap;
+        private bool _disposed;
 
         public Selector(FastBitmap fOriginalBitMap)
         {
             _resizedOriginalImage = fOriginalBitMap;
             _bitmap = fOriginalBitMap.Bitmap.Clone(new Rectangle(0, 0, fOriginalBitMap.Width, fOriginalBitMap.Height), PixelFormat.Format32bppArgb);
+        }
+
+        public void Dispose()
+        {
+            if (!_disposed)
+            {
+                _bitmap?.Dispose();
+                _disposed = true;
+            }
         }
 
         /// <summary>

@@ -129,6 +129,7 @@ namespace GA
 							Settings.ScreenWidth = resizedBitmap.Width;
 							Settings.ScreenHeight = resizedBitmap.Height;
 							selector = new Selector(new FastBitmap((Bitmap)((resizedBitmap).Clone())));
+							popA.MarkDirty();
 							foreach (var c in popA.chromosomes)
 							{
 								for (var index = 0; index < c.Polygon.Count; index++)
