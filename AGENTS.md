@@ -20,6 +20,15 @@ This file contains instructions for AI assistants working on the EvoLisa project
 - Verify changes work correctly
 - Never commit secrets or keys to the repository
 
+## Testing Structure
+
+- Test project naming: `<ProjectUnderTest>Tests`
+- Test file naming: `<ClassName>Tests.cs` (e.g., `PopulationTests.cs`)
+- Namespace: `<ProjectUnderTest>Tests.<ClassName>Tests` (e.g., `GABaseTests.PopulationTests`)
+- Test naming: `<MethodToTest>_<TestCase>_<ExpectedResult>`
+  - e.g., `Constructor_WithMaximumSize_SetsMaximumSizeProperty`
+  - e.g., `Clone_WithExistingChromosomes_CreatesIndependentCopy`
+
 ## Architecture
 
 - GUI layer (GA project) should be thin - business logic goes in GABase
