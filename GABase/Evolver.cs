@@ -253,5 +253,19 @@ namespace GABase
                     _mutationStats[(int)type].Successes++;
             }
         }
+
+        public string GetMutationStats()
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("Mutation Statistics:");
+            for (int i = 0; i < _mutationStats.Length; i++)
+            {
+                var type = (MutationType)i;
+                var stats = _mutationStats[i];
+                var rate = stats.Attempts > 0 ? (double)stats.Successes / stats.Attempts * 100 : 0;
+                sb.AppendLine($"  {type}: {stats.Successes}/{stats.Attempts} = {rate:F1}%");
+            }
+            return sb.ToString();
+        }
     }
 }

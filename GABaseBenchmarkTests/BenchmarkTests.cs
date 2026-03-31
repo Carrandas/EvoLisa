@@ -51,6 +51,8 @@ namespace GABaseBenchmarkTests
                 stopwatch.Stop();
                 stopwatch.Stop();
 
+                var mutationStats = evolver.GetMutationStats();
+
                 var branchName = GetBranchName();
                 var timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss UTC");
                 var elapsedMs = stopwatch.ElapsedMilliseconds;
@@ -70,6 +72,8 @@ namespace GABaseBenchmarkTests
                 result.AppendLine($"- Final Generation: {finalGeneration}");
                 result.AppendLine($"- Final Fitness: {finalFitnesse}");
                 result.AppendLine();
+                result.AppendLine("## Mutation Statistics");
+                result.AppendLine(mutationStats);
 
                 var docsPath = Path.Combine(GetSolutionDirectory(), "docs");
                 Directory.CreateDirectory(docsPath);
@@ -79,6 +83,8 @@ namespace GABaseBenchmarkTests
                 File.WriteAllText(filePath, result.ToString());
 
                 Console.WriteLine(result.ToString());
+                Console.WriteLine("## Mutation Statistics");
+                Console.WriteLine(mutationStats);
                 Console.WriteLine($"Benchmark saved to: {filePath}");
             }
         }
