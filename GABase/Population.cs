@@ -37,9 +37,9 @@ namespace GABase
         public Population Clone()
         {
             Population pop = new Population(MaximumSize);
-            for (int i = 0; i < chromosomes.Count; i++)
+            foreach (var chromosome in chromosomes)
             {
-                pop.chromosomes.Insert(i, chromosomes[i].Clone());
+                pop.chromosomes.Add(chromosome.Clone());
             }
             return pop;
         }
