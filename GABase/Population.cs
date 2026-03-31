@@ -50,15 +50,26 @@ namespace GABase
             using (Graphics graphics = Graphics.FromImage(bitmap))
             {
                 graphics.Clear(Color.Black);
+                
+                var colorBrushes = new Dictionary<Color, SolidBrush>();
+                
                 foreach (Chromosome chromosome in chromosomes)
                 {
-                    using (var brush =  new SolidBrush(chromosome.PolyColor))
+                    if (!colorBrushes.TryGetValue(chromosome.PolyColor, out var brush))
                     {
-                        if (Settings.Polygon == Settings.PolygonType.Lines)
-                            graphics.FillPolygon(brush, chromosome.Polygon.ToArray());
-                        else
-                            graphics.FillClosedCurve(brush, chromosome.Polygon.ToArray());
+                        brush = new SolidBrush(chromosome.PolyColor);
+                        colorBrushes[chromosome.PolyColor] = brush;
                     }
+                    
+                    if (Settings.Polygon == Settings.PolygonType.Lines)
+                        graphics.FillPolygon(brush, chromosome.Polygon.ToArray());
+                    else
+                        graphics.FillClosedCurve(brush, chromosome.Polygon.ToArray());
+                }
+                
+                foreach (var cachedBrush in colorBrushes.Values)
+                {
+                    cachedBrush.Dispose();
                 }
             }
             return bitmap;
@@ -72,19 +83,29 @@ namespace GABase
                 var boundingRectangle = new Rectangle(minX, minY, maxX-minX, maxY-minY);
                 graphics.SetClip(boundingRectangle);
                 graphics.Clear(Color.Black);
+                
+                var colorBrushes = new Dictionary<Color, SolidBrush>();
+                
                 foreach (Chromosome chromosome in chromosomes)
                 {
                     if (PolygonInRectangle(boundingRectangle, chromosome.Polygon))
-                    //Doesn't seem to improve the performance a lot.
                     {
-                        using (SolidBrush brush = new SolidBrush(chromosome.PolyColor))
+                        if (!colorBrushes.TryGetValue(chromosome.PolyColor, out var brush))
                         {
-                            if (Settings.Polygon == Settings.PolygonType.Lines)
-                                graphics.FillPolygon(brush, chromosome.Polygon.ToArray());
-                            else
-                                graphics.FillClosedCurve(brush, chromosome.Polygon.ToArray());
+                            brush = new SolidBrush(chromosome.PolyColor);
+                            colorBrushes[chromosome.PolyColor] = brush;
                         }
+                        
+                        if (Settings.Polygon == Settings.PolygonType.Lines)
+                            graphics.FillPolygon(brush, chromosome.Polygon.ToArray());
+                        else
+                            graphics.FillClosedCurve(brush, chromosome.Polygon.ToArray());
                     }
+                }
+                
+                foreach (var cachedBrush in colorBrushes.Values)
+                {
+                    cachedBrush.Dispose();
                 }
             }
             return bitmap;

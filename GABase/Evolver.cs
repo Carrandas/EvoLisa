@@ -40,6 +40,7 @@ namespace GABase
         }
 
         public Population CurrentPopulation => _popA;
+        public int CurrentGeneration => _generation;
 
         public void Start()
         {

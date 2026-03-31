@@ -11,13 +11,12 @@ namespace GABaseBenchmarkTests
     [TestClass]
     public class BenchmarkTests
     {
-        private const int Generations = 1000;
+        private const int Generations = 100000;
 
         [TestMethod]
         public void RunEvolutionBenchmark()
         {
-            var solutionDir = GetSolutionDirectory();
-            var imagePath = Path.Combine(solutionDir, "GABaseBenchmarkTests", "MonaLisa.jpg");
+            var imagePath = Path.Combine(GetSolutionDirectory(), "GABaseBenchmarkTests", "MonaLisa.jpg");
             
             if (!File.Exists(imagePath))
             {
@@ -45,12 +44,11 @@ namespace GABaseBenchmarkTests
 
                 while (finalGeneration < Generations)
                 {
-                    System.Threading.Thread.Sleep(100);
-                    if (evolver.CurrentPopulation != null && finalGeneration >= Generations)
-                        break;
+                    System.Threading.Thread.Sleep(10);
                 }
 
                 evolver.Stop();
+                stopwatch.Stop();
                 stopwatch.Stop();
 
                 var branchName = GetBranchName();
@@ -76,7 +74,7 @@ namespace GABaseBenchmarkTests
                 var docsPath = Path.Combine(GetSolutionDirectory(), "docs");
                 Directory.CreateDirectory(docsPath);
 
-                var fileName = $"benchmark-{branchName}-{timestamp.Replace(" ", "-").Replace(":", "-").Replace("UTC", "UTC")}.md".ToLower();
+                var fileName = $"benchmark-{branchName.Replace("/", "-")}-{timestamp.Replace(" ", "-").Replace(":", "-").Replace("UTC", "UTC")}.md".ToLower();
                 var filePath = Path.Combine(docsPath, fileName);
                 File.WriteAllText(filePath, result.ToString());
 
