@@ -48,6 +48,7 @@
             this.btnStart = new System.Windows.Forms.Button();
             this.pictureBoxDifference = new System.Windows.Forms.PictureBox();
             this.tssZoomLevel = new System.Windows.Forms.ToolStripStatusLabel();
+            this.tssMutationStats = new System.Windows.Forms.ToolStripStatusLabel();
             this.btnSaveImage = new System.Windows.Forms.ToolStripMenuItem();
             this.clearFocusAreasToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.settingsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -75,7 +76,8 @@
             this.tssGeneration,
             this.tssPolygonCount,
             this.tssZoomLevel,
-            this.tssTimeInMs});
+            this.tssTimeInMs,
+            this.tssMutationStats});
             this.statusStrip1.Location = new System.Drawing.Point(0, 712);
             this.statusStrip1.Name = "statusStrip1";
             this.statusStrip1.Size = new System.Drawing.Size(1274, 22);
@@ -244,6 +246,12 @@
             this.tssZoomLevel.Size = new System.Drawing.Size(69, 17);
             this.tssZoomLevel.Text = "ZoomLevel:";
             // 
+            // tssMutationStats
+            // 
+            this.tssMutationStats.Name = "tssMutationStats";
+            this.tssMutationStats.Size = new System.Drawing.Size(69, 17);
+            this.tssMutationStats.Text = "Mutations:";
+            // 
             // btnSaveImage
             // 
             this.btnSaveImage.Name = "btnSaveImage";
@@ -316,6 +324,7 @@
         private System.Windows.Forms.ToolStripMenuItem btnSaveImage;
         private System.Windows.Forms.ToolStripMenuItem clearFocusAreasToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem settingsToolStripMenuItem;
+        private System.Windows.Forms.ToolStripStatusLabel tssMutationStats;
     }
 }
 

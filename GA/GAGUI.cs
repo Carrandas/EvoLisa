@@ -95,15 +95,15 @@ namespace GA
             }
         }
 
-        private void UpdateGui(Image img, long fitnesse, Population pop, int generation, Image differenceImage,long swElapsedMilliseconds, int zoomLevel)
+        private void UpdateGui(Image img, long fitnesse, Population pop, int generation, Image differenceImage,long swElapsedMilliseconds, int zoomLevel, string mutationStats)
         {
             if(IsDisposed)
                 return;
 
             if (InvokeRequired)
             {
-                Invoke(new UpdateGuiDelegate((img1, fitnesse1, pop1, generation1, differenceImage1, zoomLevel1) => 
-                  UpdateGui(img1, fitnesse1, pop1, generation1, differenceImage1, swElapsedMilliseconds, zoomLevel1)), img, fitnesse, pop, generation, differenceImage, zoomLevel);
+                Invoke(new UpdateGuiDelegate((img1, fitnesse1, pop1, generation1, differenceImage1, zoomLevel1, stats1) => 
+                  UpdateGui(img1, fitnesse1, pop1, generation1, differenceImage1, swElapsedMilliseconds, zoomLevel1, stats1)), img, fitnesse, pop, generation, differenceImage, zoomLevel, mutationStats);
             }
             else
             {
@@ -114,6 +114,7 @@ namespace GA
                 tssPolygonCount.Text = "Polygons: " + pop.chromosomes.Count;
                 tssZoomLevel.Text = "ZoomLevel: " + zoomLevel;
                 tssTimeInMs.Text = "Running: " + swElapsedMilliseconds;
+                tssMutationStats.Text = mutationStats;
             }
         }
 
@@ -161,7 +162,7 @@ namespace GA
 
         #region Nested type: UpdateGuiDelegate
 
-        private delegate void UpdateGuiDelegate(Image img, long fitnesse, Population pop, int generation, Image differenceImage, int zoomLevel);
+        private delegate void UpdateGuiDelegate(Image img, long fitnesse, Population pop, int generation, Image differenceImage, int zoomLevel, string mutationStats);
 
         #endregion
 
