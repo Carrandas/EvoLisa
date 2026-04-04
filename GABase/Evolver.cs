@@ -31,7 +31,7 @@ namespace GABase
         private MutationStats[] _mutationStats;
         private readonly object _statsLock = new object();
 
-        public event Action<Bitmap, long, Population, int, Image, long, int> PopulationUpdated;
+        public event Action<Bitmap, long, Population, int, Image, long, int, string> PopulationUpdated;
 
         public int TargetWidth => _targetImage.Width;
         public int TargetHeight => _targetImage.Height;
@@ -152,8 +152,9 @@ namespace GABase
                         var (differenceImage, fitnesse) = DifferencePicture.GetDifferencePictureWithFitness(_popA, _originalPictureBitmap);
 
                         var generatedImage = new Bitmap(_popA.GetPicture(), _targetImage.Width, _targetImage.Height);
+                        var mutationStats = GetMutationStats();
 
-                        PopulationUpdated?.Invoke(generatedImage, fitnesse, _popA, _generation, differenceImage, _stopwatch.ElapsedMilliseconds, _resizeFactor);
+                        PopulationUpdated?.Invoke(generatedImage, fitnesse, _popA, _generation, differenceImage, _stopwatch.ElapsedMilliseconds, _resizeFactor, mutationStats);
 
                         HandleResize(fitnesse);
 
@@ -256,14 +257,25 @@ namespace GABase
 
         public string GetMutationStats()
         {
+            const double baselineWeight = 1.0;
+            const double successWeight = 10.0;
+
+            double totalWeight = 0;
+            for (int i = 0; i < _mutationStats.Length; i++)
+            {
+                double weight = baselineWeight + (_mutationStats[i].SuccessRate * successWeight);
+                _mutationStats[i].Weight = weight;
+                totalWeight += weight;
+            }
+
             var sb = new System.Text.StringBuilder();
-            sb.AppendLine("Mutation Statistics:");
             for (int i = 0; i < _mutationStats.Length; i++)
             {
                 var type = (MutationType)i;
                 var stats = _mutationStats[i];
-                var rate = stats.Attempts > 0 ? (double)stats.Successes / stats.Attempts * 100 : 0;
-                sb.AppendLine($"  {type}: {stats.Successes}/{stats.Attempts} = {rate:F1}%");
+                int percentage = totalWeight > 0 ? (int)(stats.Weight / totalWeight * 100) : 0;
+                if (i > 0) sb.Append(" ");
+                sb.Append($"{type}:{percentage}%");
             }
             return sb.ToString();
         }
