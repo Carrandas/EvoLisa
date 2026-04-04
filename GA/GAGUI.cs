@@ -11,10 +11,88 @@ namespace GA
     public partial class frmGA : Form
     {
         Evolver _evolver;
+        Point _dragStart;
+        bool _isDragging;
+        Rectangle _currentDragRect;
 
         public frmGA()
         {
             InitializeComponent();
+            pictureBoxOriginal.MouseDown += pictureBoxOriginal_MouseDown;
+            pictureBoxOriginal.MouseMove += pictureBoxOriginal_MouseMove;
+            pictureBoxOriginal.MouseUp += pictureBoxOriginal_MouseUp;
+        }
+
+        private void pictureBoxOriginal_MouseDown(object sender, MouseEventArgs e)
+        {
+            _isDragging = true;
+            _dragStart = e.Location;
+        }
+
+        private void pictureBoxOriginal_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (_isDragging)
+            {
+                int x = Math.Min(_dragStart.X, e.Location.X);
+                int y = Math.Min(_dragStart.Y, e.Location.Y);
+                int width = Math.Abs(e.Location.X - _dragStart.X);
+                int height = Math.Abs(e.Location.Y - _dragStart.Y);
+                _currentDragRect = new Rectangle(x, y, width, height);
+                pictureBoxOriginal.Invalidate();
+            }
+        }
+
+        private void pictureBoxOriginal_MouseUp(object sender, MouseEventArgs e)
+        {
+            if (_isDragging && _currentDragRect.Width > 5 && _currentDragRect.Height > 5)
+            {
+                Settings.FocusAreas.Add(_currentDragRect);
+                Settings.InvalidateFocusWeightMap();
+                DrawFocusAreas();
+            }
+            _isDragging = false;
+            _currentDragRect = Rectangle.Empty;
+        }
+
+        private void DrawFocusAreas()
+        {
+            if (pictureBoxOriginal.Image == null) return;
+            
+            var tempBitmap = new Bitmap(pictureBoxOriginal.Image);
+            var g = Graphics.FromImage(tempBitmap);
+            foreach (var rect in Settings.FocusAreas)
+            {
+                using (var pen = new Pen(Color.Red, 2))
+                {
+                    g.DrawRectangle(pen, rect);
+                }
+            }
+            if (_currentDragRect.Width > 0)
+            {
+                using (var pen = new Pen(Color.Yellow, 2))
+                {
+                    g.DrawRectangle(pen, _currentDragRect);
+                }
+            }
+            g.Dispose();
+            
+            var oldImage = pictureBoxOriginal.Image;
+            pictureBoxOriginal.Image = tempBitmap;
+            if (oldImage != null && oldImage != pictureBoxGenerated.Image)
+                oldImage.Dispose();
+        }
+
+        private void clearFocusAreasToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            Settings.FocusAreas.Clear();
+            Settings.InvalidateFocusWeightMap();
+            if (pictureBoxOriginal.Image != null && !string.IsNullOrEmpty(Settings.ImageLocation))
+            {
+                var oldImage = pictureBoxOriginal.Image;
+                pictureBoxOriginal.Image = new Bitmap(Settings.ImageLocation);
+                if (oldImage != null && oldImage != pictureBoxGenerated.Image)
+                    oldImage.Dispose();
+            }
         }
 
         private void UpdateGui(Image img, long fitnesse, Population pop, int generation, Image differenceImage,long swElapsedMilliseconds, int zoomLevel)

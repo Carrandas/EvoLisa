@@ -81,21 +81,24 @@ namespace GABase
                 ImageLockMode.ReadOnly,
                 PixelFormat.Format32bppArgb);
 
+            var focusWeightMap = Settings.FocusWeightMap;
+            int width = Settings.ScreenWidth;
+            int height = Settings.ScreenHeight;
+
             unchecked
             {
                 unsafe
                 {
-                    //Shamelessly copied from https://danbystrom.se/2008/12/14/improving-performance/
                     Pixel* p1 = (Pixel*)bd.Scan0.ToPointer();
                     Pixel* p2 = (Pixel*)obd.Scan0.ToPointer();
-                    var size = Settings.ScreenWidth * Settings.ScreenHeight;
-                    for (int i = size; i > 0; i--, p1++, p2++)
+                    for (int i = 0; i < width * height; i++, p1++, p2++)
                     {
                         int r = p1->R - p2->R;
                         int g = p1->G - p2->G;
                         int b = p1->B - p2->B;
-                        fitnesse += r * r + g * g + b * b;
-                    }                    
+                        int diff = r * r + g * g + b * b;
+                        fitnesse += diff * focusWeightMap[i];
+                    }
                 }
             }
 
@@ -126,8 +129,8 @@ namespace GABase
             long fitnesse = 0;
 
             var picture = pop.GetPicture(minX, minY, maxX, maxY);
-            var width = maxX - minX ;
-            var height = maxY - minY ;
+            var width = maxX - minX;
+            var height = maxY - minY;
             BitmapData bd = picture.LockBits(
                 new Rectangle(minX, minY, width, height), 
                 ImageLockMode.ReadOnly,
@@ -139,39 +142,32 @@ namespace GABase
             var pictureWidth = picture.Width;
             var pixelsToNextRow = pictureWidth + minX - maxX;
 
+            var focusWeightMap = Settings.FocusWeightMap;
+            int screenWidth = Settings.ScreenWidth;
+
             unchecked
             {
                 unsafe
                 {
                     Pixel* p1 = (Pixel*) bd.Scan0.ToPointer();
                     Pixel* p2 = (Pixel*) obd.Scan0.ToPointer();
-                    //var size = (maxX - minX) * (maxY - minY);
-                    //for (int i = size; i > 0; i--, p1++, p2++)
-                    //{
-                    //    int r = p1->R - p2->R;
-                    //    int g = p1->G - p2->G;
-                    //    int b = p1->B - p2->B;
-                    //    fitnesse += r * r + g * g + b * b;
-                    //}
-
-                    //Pixel* startP1 = (Pixel*)bd.Scan0.ToPointer();
-                    //Pixel* startP2 = (Pixel*)obd.Scan0.ToPointer();
 
                     for (int y = 0; y < bd.Height; y++)
                     {
+                        int mapIndex = (minY + y) * screenWidth + minX;
                         for (int x = 0; x < bd.Width; x++)
                         {
                             int r = p1->R - p2->R;
                             int g = p1->G - p2->G;
                             int b = p1->B - p2->B;
-                            fitnesse += r * r + g * g + b * b;
+                            int diff = r * r + g * g + b * b;
+                            fitnesse += diff * focusWeightMap[mapIndex];
                             p1++;
                             p2++;
+                            mapIndex++;
                         }
 
-                        //p1 = startP1 + bd.Stride * (y+1);
                         p1 += pixelsToNextRow;
-                        //p2 = startP2 + obd.Stride * (y+1);
                         p2 += pixelsToNextRow;
                     }
                 }

@@ -49,6 +49,7 @@
             this.pictureBoxDifference = new System.Windows.Forms.PictureBox();
             this.tssZoomLevel = new System.Windows.Forms.ToolStripStatusLabel();
             this.btnSaveImage = new System.Windows.Forms.ToolStripMenuItem();
+            this.clearFocusAreasToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             ((System.ComponentModel.ISupportInitialize)(this.pictureBoxGenerated)).BeginInit();
             this.statusStrip1.SuspendLayout();
             this.menuStrip1.SuspendLayout();
@@ -120,7 +121,8 @@
             // 
             this.fileToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.openImageToolStripMenuItem,
-            this.btnSaveImage});
+            this.btnSaveImage,
+            this.clearFocusAreasToolStripMenuItem});
             this.fileToolStripMenuItem.Name = "fileToolStripMenuItem";
             this.fileToolStripMenuItem.Size = new System.Drawing.Size(37, 20);
             this.fileToolStripMenuItem.Text = "File";
@@ -247,6 +249,13 @@
             this.btnSaveImage.Text = "Save Image";
             this.btnSaveImage.Click += new System.EventHandler(this.saveImagesToolStripMenuItem_Click);
             // 
+            // clearFocusAreasToolStripMenuItem
+            // 
+            this.clearFocusAreasToolStripMenuItem.Name = "clearFocusAreasToolStripMenuItem";
+            this.clearFocusAreasToolStripMenuItem.Size = new System.Drawing.Size(180, 22);
+            this.clearFocusAreasToolStripMenuItem.Text = "Clear Focus Areas";
+            this.clearFocusAreasToolStripMenuItem.Click += new System.EventHandler(this.clearFocusAreasToolStripMenuItem_Click);
+            // 
             // frmGA
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(96F, 96F);
@@ -296,6 +305,7 @@
         private System.Windows.Forms.ToolStripStatusLabel tssTimeInMs;
         private System.Windows.Forms.ToolStripStatusLabel tssZoomLevel;
         private System.Windows.Forms.ToolStripMenuItem btnSaveImage;
+        private System.Windows.Forms.ToolStripMenuItem clearFocusAreasToolStripMenuItem;
     }
 }
 
