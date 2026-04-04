@@ -14,6 +14,7 @@ namespace GA
         Point _dragStart;
         bool _isDragging;
         Rectangle _currentDragRect;
+        Bitmap _originalCleanImage;
 
         public frmGA()
         {
@@ -56,9 +57,9 @@ namespace GA
 
         private void DrawFocusAreas()
         {
-            if (pictureBoxOriginal.Image == null) return;
+            if (_originalCleanImage == null) return;
             
-            var tempBitmap = new Bitmap(pictureBoxOriginal.Image);
+            var tempBitmap = new Bitmap(_originalCleanImage);
             var g = Graphics.FromImage(tempBitmap);
             foreach (var rect in Settings.FocusAreas)
             {
@@ -86,10 +87,10 @@ namespace GA
         {
             Settings.FocusAreas.Clear();
             Settings.InvalidateFocusWeightMap();
-            if (pictureBoxOriginal.Image != null && !string.IsNullOrEmpty(Settings.ImageLocation))
+            if (_originalCleanImage != null)
             {
                 var oldImage = pictureBoxOriginal.Image;
-                pictureBoxOriginal.Image = new Bitmap(Settings.ImageLocation);
+                pictureBoxOriginal.Image = new Bitmap(_originalCleanImage);
                 if (oldImage != null && oldImage != pictureBoxGenerated.Image)
                     oldImage.Dispose();
             }
@@ -124,17 +125,20 @@ namespace GA
             if (fileDialog.ShowDialog(this) == DialogResult.OK)
             {
                 Settings.ImageLocation = fileDialog.FileName;
-                //And read file
                 Bitmap bitmap = new Bitmap(fileDialog.FileName);
 
-                pictureBoxOriginal.Image = bitmap;
+                if (_originalCleanImage != null)
+                    _originalCleanImage.Dispose();
+                _originalCleanImage = new Bitmap(bitmap);
+                
+                pictureBoxOriginal.Image = new Bitmap(bitmap);
+                
                 pictureBoxOriginal.Width = bitmap.Width;
                 pictureBoxGenerated.Width = bitmap.Width;
                 pictureBoxDifference.Width = bitmap.Width;
                 pictureBoxOriginal.Height = bitmap.Height;
                 pictureBoxGenerated.Height = bitmap.Height;
                 pictureBoxDifference.Height = bitmap.Height;
-                
                 
                 Settings.ScreenHeight = bitmap.Height;
                 Settings.ScreenWidth = bitmap.Width;
@@ -145,7 +149,8 @@ namespace GA
         {
             if (_evolver == null || !IsEvolverRunning())
             {
-                _evolver = new Evolver((Bitmap)pictureBoxOriginal.Image);
+                var cleanImage = _originalCleanImage ?? (Bitmap)pictureBoxOriginal.Image;
+                _evolver = new Evolver(cleanImage);
                 _evolver.Priority = ThreadPriority.Normal;
                 _evolver.PopulationUpdated += UpdateGui;
                 _evolver.Start();
