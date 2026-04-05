@@ -33,7 +33,7 @@ namespace GABaseBenchmarkTests
                 long finalFitnesse = 0;
                 int finalGeneration = 0;
 
-                evolver.PopulationUpdated += (img, fitnesse, pop, generation, diffImg, elapsed, zoom) =>
+                evolver.PopulationUpdated += (img, fitnesse, pop, generation, diffImg, elapsed, zoom, stats) =>
                 {
                     finalFitnesse = fitnesse;
                     finalGeneration = generation;
