@@ -236,5 +236,19 @@ namespace GA
             b.Append("</svg>");
             File.WriteAllText(Path.Combine(Path.GetTempPath(), "img.svg"), b.ToString());
         }
+
+        private void settingsToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            using (var settingsForm = new frmSettings())
+            {
+                settingsForm.nudMaxPolygonCount.Value = GABase.Settings.MaxPolygonCount;
+                settingsForm.nudMaxPolygonPointCount.Value = GABase.Settings.MaxPolygonPointCount;
+                settingsForm.nudMinPolygonPointCount.Value = GABase.Settings.MinPolygonPointCount;
+                settingsForm.cmbPolygonType.SelectedIndex = GABase.Settings.Polygon == GABase.Settings.PolygonType.Lines ? 0 : 1;
+                settingsForm.nudFocusWeight.Value = GABase.Settings.FocusWeight;
+                
+                settingsForm.ShowDialog();
+            }
+        }
     }
 }

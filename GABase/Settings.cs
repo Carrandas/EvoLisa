@@ -19,31 +19,44 @@ namespace GABase
         public static int ScreenWidth { get; set; }
         public static int ScreenHeight { get; set; }
 
-
+        private static int _maxPolygonCount = 5000;
         public static int MaxPolygonCount
         {
-            get { return 5000; }
+            get { return _maxPolygonCount; }
+            set { _maxPolygonCount = value; }
         }
 
+        private static int _maxPolygonPointCount = 5;
         public static int MaxPolygonPointCount
         {
-            get { return 5; }
+            get { return _maxPolygonPointCount; }
+            set { _maxPolygonPointCount = value; }
         }
 
+        private static int _minPolygonPointCount = 3;
         public static int MinPolygonPointCount
         {
-            get { return 3; }
+            get { return _minPolygonPointCount; }
+            set { _minPolygonPointCount = value; }
         }
 
+        private static PolygonType _polygon = PolygonType.Lines;
         public static PolygonType Polygon
         {
-            get { return PolygonType.Lines; }
+            get { return _polygon; }
+            set { _polygon = value; }
         }
 
         public static bool UseARGB = true;
 
+        private static int _focusWeight = 100;
+        public static int FocusWeight
+        {
+            get { return _focusWeight; }
+            set { _focusWeight = value; }
+        }
+
         public static List<Rectangle> FocusAreas = new List<Rectangle>();
-        public static int FocusWeight = 100;
         private static byte[] _focusWeightMap;
         private static int _lastFocusWidth;
         private static int _lastFocusHeight;

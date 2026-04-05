@@ -84,6 +84,7 @@
     <Compile Include="GAGUI.Designer.cs">
       <DependentUpon>GAGUI.cs</DependentUpon>
     </Compile>
+    <Compile Include="frmSettings.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <EmbeddedResource Include="GAGUI.resx">
