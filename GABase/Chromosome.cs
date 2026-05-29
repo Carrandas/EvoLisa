@@ -10,6 +10,7 @@ namespace GABase
         public List<Point> Polygon { get; set; }
         public Point[] PolygonArray { get; private set; }
         public Color PolyColor { get; set; }
+        public Rectangle BoundingBox { get; private set; }
         private readonly int _size;
 
         public Chromosome(int size)
@@ -22,6 +23,27 @@ namespace GABase
         public void UpdatePolygonArray()
         {
             PolygonArray = Polygon.ToArray();
+            UpdateBoundingBox();
+        }
+
+        public void UpdateBoundingBox()
+        {
+            if (Polygon.Count == 0)
+            {
+                BoundingBox = Rectangle.Empty;
+                return;
+            }
+            int minX = int.MaxValue, minY = int.MaxValue;
+            int maxX = int.MinValue, maxY = int.MinValue;
+            for (int i = 0; i < Polygon.Count; i++)
+            {
+                var p = Polygon[i];
+                if (p.X < minX) minX = p.X;
+                if (p.X > maxX) maxX = p.X;
+                if (p.Y < minY) minY = p.Y;
+                if (p.Y > maxY) maxY = p.Y;
+            }
+            BoundingBox = new Rectangle(minX, minY, maxX - minX, maxY - minY);
         }
 
         public void GenerateRandomChromosome()
@@ -143,6 +165,7 @@ namespace GABase
             chromosome.PolyColor = PolyColor;
             chromosome.Polygon.AddRange(Polygon);
             chromosome.PolygonArray = (Point[])PolygonArray.Clone();
+            chromosome.BoundingBox = BoundingBox;
             return chromosome;
         }
     }

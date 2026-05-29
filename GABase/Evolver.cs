@@ -8,7 +8,7 @@ namespace GABase
 {
     public class Evolver
     {
-        private class MutationStats
+        private class MutationWeightStats
         {
             public long Attempts;
             public long Successes;
@@ -22,13 +22,14 @@ namespace GABase
         private Selector _selector;
         private Mutator _mutator;
         private Thread _workerThread;
+        private volatile bool _stopRequested;
         private int _resizeFactor = 4;
         private int _generation = 1;
         private long _previousFitnesse = long.MaxValue;
         private readonly Stopwatch _stopwatch;
         private long _lastUpdate;
 
-        private MutationStats[] _mutationStats;
+        private MutationWeightStats[] _mutationStats;
         private readonly object _statsLock = new object();
 
         public event Action<Bitmap, long, Population, int, Image, long, int, string> PopulationUpdated;
@@ -49,15 +50,15 @@ namespace GABase
             _selector = new Selector(_originalPictureBitmap);
             _mutator = new Mutator();
 
-            _mutationStats = new MutationStats[]
+            _mutationStats = new MutationWeightStats[]
             {
-                new MutationStats(),
-                new MutationStats(),
-                new MutationStats(),
-                new MutationStats(),
-                new MutationStats(),
-                new MutationStats(),
-                new MutationStats()
+                new MutationWeightStats(),
+                new MutationWeightStats(),
+                new MutationWeightStats(),
+                new MutationWeightStats(),
+                new MutationWeightStats(),
+                new MutationWeightStats(),
+                new MutationWeightStats()
             };
         }
 
@@ -68,16 +69,19 @@ namespace GABase
         {
             if (_workerThread == null || !_workerThread.IsAlive)
             {
+                _stopRequested = false;
                 _workerThread = new Thread(RunEvolution);
+                _workerThread.IsBackground = true;
                 _workerThread.Start();
             }
         }
 
         public void Stop()
         {
+            _stopRequested = true;
             if (_workerThread != null && _workerThread.IsAlive)
             {
-                _workerThread.Abort();
+                _workerThread.Join(5000);
             }
         }
 
@@ -91,6 +95,17 @@ namespace GABase
             }
         }
 
+        public enum MutationType
+        {
+            Recolor,
+            ChangePoint,
+            AddPolygonPoint,
+            RemovePolygonPoint,
+            SwitchChromosomes,
+            AddChromosome,
+            RemoveChromosome
+        }
+
         private void RunEvolution()
         {
             _popA = new Population(Settings.MaxPolygonCount);
@@ -99,53 +114,66 @@ namespace GABase
             _popA.chromosomes.Add(chromosome);
             chromosome.GenerateRandomChromosome();
 
-            long currentFitness = long.MaxValue;
-            Population popB;
+            // Initial full render of the population into the cached bitmap
+            _selector.FullRender(_popA);
 
-            while (true)
+            long currentFitness = long.MaxValue;
+
+            while (!_stopRequested)
             {
                 double improvedPercentage = 0.0;
 
-                popB = _popA.Clone();
-
                 var selectedMutation = SelectWeightedMutation();
                 MutationType mutationType = selectedMutation;
+                MutationBackup backup;
 
                 switch (selectedMutation)
                 {
                     case MutationType.Recolor:
-                        _mutator.Recolor(popB);
+                        backup = _mutator.RecolorWithBackup(_popA);
                         break;
                     case MutationType.ChangePoint:
-                        _mutator.ChangePoint(popB);
+                        backup = _mutator.ChangePointWithBackup(_popA);
                         break;
                     case MutationType.AddPolygonPoint:
-                        _mutator.AddPolygonPoint(popB);
+                        backup = _mutator.AddPolygonPointWithBackup(_popA);
                         break;
                     case MutationType.RemovePolygonPoint:
-                        _mutator.RemovePolygonPoint(popB);
+                        backup = _mutator.RemovePolygonPointWithBackup(_popA);
                         break;
                     case MutationType.SwitchChromosomes:
-                        _mutator.SwitchChromosomes(popB);
+                        backup = _mutator.SwitchChromosomesWithBackup(_popA);
                         break;
                     case MutationType.AddChromosome:
-                        _mutator.AddChromosome(popB, _originalPictureBitmap);
+                        backup = _mutator.AddChromosomeWithBackup(_popA, _originalPictureBitmap);
                         improvedPercentage = 1;
                         break;
                     case MutationType.RemoveChromosome:
                         improvedPercentage = -1;
-                        _mutator.RemoveChromosome(popB);
+                        backup = _mutator.RemoveChromosomeWithBackup(_popA);
+                        break;
+                    default:
+                        backup = new MutationBackup();
                         break;
                 }
 
-                if (popB.IsDirty)
+                if (_popA.IsDirty && backup.WasDirty)
                 {
-                    popB.IsDirty = false;
-                    _popA = _selector.SelectPopulation(_popA, popB, out var newPartialFitnesse, improvedPercentage);
+                    _popA.IsDirty = false;
 
-                    bool improved = newPartialFitnesse < currentFitness;
-                    RecordMutationResult(mutationType, improved);
-                    currentFitness = newPartialFitnesse;
+                    bool accepted = _selector.EvaluateMutation(_popA, _popA.DirtyArea, improvedPercentage, out var newPartialFitness);
+
+                    if (accepted)
+                    {
+                        currentFitness = newPartialFitness;
+                        RecordMutationResult(mutationType, true);
+                    }
+                    else
+                    {
+                        // Revert the mutation
+                        _mutator.RevertMutation(_popA, backup);
+                        RecordMutationResult(mutationType, false);
+                    }
 
                     if (_stopwatch.ElapsedMilliseconds > _lastUpdate + 2500)
                     {
@@ -193,6 +221,7 @@ namespace GABase
                 Settings.ScreenWidth = resizedBitmap.Width;
                 Settings.ScreenHeight = resizedBitmap.Height;
 
+                _selector.Dispose();
                 _selector = new Selector(new FastBitmap((Bitmap)(resizedBitmap.Clone())));
 
                 foreach (var c in _popA.chromosomes)
@@ -202,21 +231,14 @@ namespace GABase
                         var p = c.Polygon[index];
                         c.Polygon[index] = new Point(Math.Min(p.X * 2, Settings.ScreenWidth), Math.Min(p.Y * 2, Settings.ScreenHeight));
                     }
+                    c.UpdatePolygonArray();
                 }
+
+                // Full re-render at new resolution
+                _selector.FullRender(_popA);
 
                 DifferencePicture.GetDifferencePicture(_popA, _originalPictureBitmap);
             }
-        }
-
-        public enum MutationType
-        {
-            Recolor,
-            ChangePoint,
-            AddPolygonPoint,
-            RemovePolygonPoint,
-            SwitchChromosomes,
-            AddChromosome,
-            RemoveChromosome
         }
 
         private MutationType SelectWeightedMutation()
