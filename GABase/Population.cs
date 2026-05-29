@@ -1,11 +1,8 @@
 ﻿#region
 
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
-using System.Linq;
-using Microsoft.Win32.SafeHandles;
 
 #endregion
 
@@ -89,7 +86,7 @@ namespace GABase
                 
                 foreach (Chromosome chromosome in chromosomes)
                 {
-                    if (PolygonInRectangle(boundingRectangle, chromosome.Polygon))
+                    if (PolygonInRectangle(boundingRectangle, chromosome))
                     {
                         if (!colorBrushes.TryGetValue(chromosome.PolyColor, out var brush))
                         {
@@ -114,34 +111,16 @@ namespace GABase
         }
 
         /// <summary>
-        /// Simplified implementation: check if the bounding box of the polygon overlap.
+        /// Check if the chromosome's bounding box overlaps with the given rectangle.
         /// </summary>
-        /// <param name="rectangle"></param>
-        /// <param name="polygon"></param>
-        /// <returns></returns>
-        private bool PolygonInRectangle(Rectangle rectangle, List<Point> polygon)
+        private bool PolygonInRectangle(Rectangle rectangle, Chromosome chromosome)
         {
-            var minX = polygon.Min(x => x.X);
-            var maxX = polygon.Max(x => x.X);
-            var minY = polygon.Min(x => x.Y);
-            var maxY = polygon.Max(x => x.Y);
-            var boundingRectangle = new Rectangle(minX, minY, maxX - minX, maxY - minY);
-            return doOverlap(
-                new Point(rectangle.Left, rectangle.Bottom), new Point(rectangle.Right, rectangle.Top),
-                new Point(boundingRectangle.Left, boundingRectangle.Bottom), new Point(boundingRectangle.Right, boundingRectangle.Top)
-            );
-        }
-
-        bool doOverlap(Point l1, Point r1, Point l2, Point r2)
-        {
-            // If one rectangle is on left side of other
-            if (l1.X > r2.X || l2.X > r1.X)
+            var bb = chromosome.BoundingBox;
+            // Two rectangles do NOT overlap if one is entirely to the left/right/above/below the other
+            if (rectangle.Right < bb.Left || bb.Right < rectangle.Left)
                 return false;
-
-            // If one rectangle is above other
-            if (l1.Y < r2.Y || l2.Y < r1.Y)
+            if (rectangle.Bottom < bb.Top || bb.Bottom < rectangle.Top)
                 return false;
-
             return true;
         }
     }
