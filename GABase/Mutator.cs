@@ -1,11 +1,18 @@
 using System;
 using System.Drawing;
+using System.Threading;
 
 namespace GABase
 {
     public class Mutator
     {
-        private static readonly Random random = new Random();
+        private static int _seed = Environment.TickCount;
+        private readonly Random random;
+
+        public Mutator()
+        {
+            random = new Random(Interlocked.Increment(ref _seed));
+        }
 
         #region Original mutation methods (kept for compatibility)
 
@@ -76,12 +83,12 @@ namespace GABase
             }
         }
 
-        public void AddChromosome(Population pop, FastBitmap originalPictureBitmap)
+        public void AddChromosome(Population pop, FastBitmap originalPictureBitmap, long[,] differences = null)
         {
             if (pop.chromosomes.Count < pop.MaximumSize)
             {
                 var chromosome = new Chromosome(Settings.MaxPolygonPointCount);
-                chromosome.GenerateRandomSmallChromosome2(originalPictureBitmap);
+                chromosome.GenerateRandomSmallChromosome2(originalPictureBitmap, differences);
                 var index = random.Next(pop.chromosomes.Count);
 
                 var chance2 = random.Next(2);
@@ -395,14 +402,14 @@ namespace GABase
             return backup;
         }
 
-        public MutationBackup AddChromosomeWithBackup(Population pop, FastBitmap originalPictureBitmap)
+        public MutationBackup AddChromosomeWithBackup(Population pop, FastBitmap originalPictureBitmap, long[,] differences = null)
         {
             var backup = new MutationBackup { Type = Evolver.MutationType.AddChromosome, WasDirty = false };
             if (pop.chromosomes.Count >= pop.MaximumSize)
                 return backup;
 
             var chromosome = new Chromosome(Settings.MaxPolygonPointCount);
-            chromosome.GenerateRandomSmallChromosome2(originalPictureBitmap);
+            chromosome.GenerateRandomSmallChromosome2(originalPictureBitmap, differences);
             var index = random.Next(Math.Max(1, pop.chromosomes.Count));
 
             var chance2 = random.Next(2);

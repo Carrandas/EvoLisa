@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
-using GAgeneratedImagese.Tools;
 
 namespace GABase
 {
@@ -89,11 +88,13 @@ namespace GABase
             UpdatePolygonArray();
         }
 
-        public void GenerateRandomSmallChromosome2(FastBitmap originalPictureBitmap)
+        public void GenerateRandomSmallChromosome2(FastBitmap originalPictureBitmap, long[,] differences)
         {
-            //int x = RandomGenerator.GetRandomInt(Settings.ScreenWidth);
-            //int y = RandomGenerator.GetRandomInt(Settings.ScreenHeight);
-            Point p1 = GetPoint();
+            // Use the bitmap's actual dimensions to avoid race with Settings during resize
+            int bmpWidth = originalPictureBitmap.Width;
+            int bmpHeight = originalPictureBitmap.Height;
+
+            Point p1 = GetPoint(differences, bmpWidth, bmpHeight);
             int x = p1.X;
             int y = p1.Y;
             for (int i = 0; i < Settings.MinPolygonPointCount; i++)
@@ -107,56 +108,51 @@ namespace GABase
                 p.X += xMovement;
                 if (p.X < 0)
                     p.X = 0;
-                else if (p.X >= Settings.ScreenWidth)
-                    p.X = Settings.ScreenWidth;
+                else if (p.X >= bmpWidth)
+                    p.X = bmpWidth - 1;
 
                 p.Y += yMovement;
                 if (p.Y < 0)
                     p.Y = 0;
-                else if (p.Y >= Settings.ScreenHeight)
-                    p.Y = Settings.ScreenHeight;
+                else if (p.Y >= bmpHeight)
+                    p.Y = bmpHeight - 1;
 
                 Polygon.Insert(i, p);
             }
 
-            //if (DifferencePicture.DifferenceImage != null)
-            //{
-                //PolyColor = (DifferencePicture.DifferenceImage as Bitmap).GetPixel(x, y);
-                //PolyColor = Color.FromArgb(RandomGenerator.GetRandomInt(30) + 30, PolyColor.R, PolyColor.G, PolyColor.B);
-                //PolyColor = Color.FromArgb(PolyColor.A, PolyColor.R, PolyColor.G, PolyColor.B);
-            //}
-            //else
-            {
-                //PolyColor = RandomGenerator.GetRandomColor();
-                PolyColor = RandomGenerator.ChangeColor(originalPictureBitmap.GetPixel(p1.X, p1.Y));
-            }
+            PolyColor = RandomGenerator.ChangeColor(originalPictureBitmap.GetPixel(p1.X, p1.Y));
             UpdatePolygonArray();
         }
 
-        private Point GetPoint()
+        private Point GetPoint(long[,] differences, int width, int height)
         {
-            if (DifferencePicture.Differences != null)
+            if (differences != null &&
+                differences.GetUpperBound(0) >= width - 1 &&
+                differences.GetUpperBound(1) >= height - 1)
             {
-                long maximum = DifferencePicture.Differences[Settings.ScreenWidth - 1, Settings.ScreenHeight - 1];
-                long random = RandomGenerator.GetRandomLong(maximum);
-                long previousFitnesse = 0;
-                for (int x = 0; x <= DifferencePicture.Differences.GetUpperBound(0); x++)
+                long maximum = differences[width - 1, height - 1];
+                if (maximum > 0)
                 {
-                    for (int y = 0; y <= DifferencePicture.Differences.GetUpperBound(1); y++)
+                    long random = RandomGenerator.GetRandomLong(maximum);
+                    long previousFitnesse = 0;
+                    for (int x = 0; x <= differences.GetUpperBound(0); x++)
                     {
-                        long currentFitnesse = DifferencePicture.Differences[x, y];
-                        if (currentFitnesse >= random && (previousFitnesse < random))
+                        for (int y = 0; y <= differences.GetUpperBound(1); y++)
                         {
-                            return new Point(x, y);
+                            long currentFitnesse = differences[x, y];
+                            if (currentFitnesse >= random && (previousFitnesse < random))
+                            {
+                                return new Point(Math.Min(x, width - 1), Math.Min(y, height - 1));
+                            }
+                            previousFitnesse = currentFitnesse;
                         }
-                        previousFitnesse = currentFitnesse;
                     }
                 }
             }
 
-            int px = RandomGenerator.GetRandomInt(Settings.ScreenWidth);
-            int py = RandomGenerator.GetRandomInt(Settings.ScreenHeight);
-            return new Point(px,py);
+            int px = RandomGenerator.GetRandomInt(width);
+            int py = RandomGenerator.GetRandomInt(height);
+            return new Point(px, py);
         }
 
         public Chromosome Clone()

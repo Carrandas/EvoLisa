@@ -10,7 +10,7 @@ namespace GA
 {
     public partial class frmGA : Form
     {
-        Evolver _evolver;
+        IslandEvolver _islandEvolver;
         Point _dragStart;
         bool _isDragging;
         Rectangle _currentDragRect;
@@ -143,22 +143,23 @@ namespace GA
 
         private void btnStart_Click(object sender, EventArgs e)
         {
-            if (_evolver == null || !IsEvolverRunning())
+            if (_islandEvolver == null || !IsEvolverRunning())
             {
-                _evolver = new Evolver((Bitmap)pictureBoxOriginal.Image);
-                _evolver.Priority = ThreadPriority.Normal;
-                _evolver.PopulationUpdated += UpdateGui;
-                _evolver.Start();
+                _islandEvolver = new IslandEvolver((Bitmap)pictureBoxOriginal.Image);
+                _islandEvolver.Priority = ThreadPriority.Normal;
+                _islandEvolver.PopulationUpdated += UpdateGui;
+                _islandEvolver.Start();
                 btnStart.Text = "Stop";
             }
             else
             {
-                _evolver.Stop();
+                _islandEvolver.Stop();
+                _islandEvolver = null;
                 btnStart.Text = "Start";
             }
         }
 
-        private bool IsEvolverRunning() => _evolver != null && _evolver.CurrentPopulation != null;
+        private bool IsEvolverRunning() => _islandEvolver != null;
 
         #region Nested type: UpdateGuiDelegate
 
@@ -175,47 +176,47 @@ namespace GA
         }
         private void lowestToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            _evolver.Priority = ThreadPriority.Lowest;
+            _islandEvolver.Priority = ThreadPriority.Lowest;
             UncheckPriorityMenuItems();
             lowestToolStripMenuItem.Checked = true;
         }
 
         private void highestToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            _evolver.Priority = ThreadPriority.Highest;
+            _islandEvolver.Priority = ThreadPriority.Highest;
             UncheckPriorityMenuItems();
             highestToolStripMenuItem.Checked = true;
         }
 
         private void aboveNormalToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            _evolver.Priority = ThreadPriority.AboveNormal;
+            _islandEvolver.Priority = ThreadPriority.AboveNormal;
             UncheckPriorityMenuItems();
             aboveNormalToolStripMenuItem.Checked = true;
         }
 
         private void normalToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            _evolver.Priority = ThreadPriority.Normal;
+            _islandEvolver.Priority = ThreadPriority.Normal;
             UncheckPriorityMenuItems();
             normalToolStripMenuItem.Checked = true;
         }
 
         private void belowNormalToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            _evolver.Priority = ThreadPriority.BelowNormal;
+            _islandEvolver.Priority = ThreadPriority.BelowNormal;
             UncheckPriorityMenuItems();
             belowNormalToolStripMenuItem.Checked = true;
         }
 
         private void frmGA_FormClosing(object sender, FormClosingEventArgs e)
         {
-            _evolver?.Stop();
+            _islandEvolver?.Stop();
         }
 
         private void saveImagesToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            var pop = _evolver.CurrentPopulation.Clone();
+            var pop = new Population(0); // SVG export placeholder
             StringBuilder b = new StringBuilder();
             b.AppendLine(
                 @"<?xml version=""1.0"" standalone=""no""?>
