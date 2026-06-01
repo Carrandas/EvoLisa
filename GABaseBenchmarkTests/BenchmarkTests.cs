@@ -89,6 +89,87 @@ namespace GABaseBenchmarkTests
             }
         }
 
+        [TestMethod]
+        public void RunEvolutionBenchmark_MultiIsland()
+        {
+            var imagePath = Path.Combine(GetSolutionDirectory(), "GABaseBenchmarkTests", "MonaLisa.jpg");
+
+            if (!File.Exists(imagePath))
+            {
+                Assert.Inconclusive($"Image not found at: {imagePath}");
+            }
+
+            using (var targetImage = new Bitmap(imagePath))
+            {
+                Settings.ScreenWidth = targetImage.Width;
+                Settings.ScreenHeight = targetImage.Height;
+
+                int islandCount = Math.Min(Environment.ProcessorCount, 8);
+                var islandEvolver = new IslandEvolver(targetImage, islandCount, migrationIntervalMs: 5000);
+
+                long finalFitnesse = 0;
+                int finalGeneration = 0;
+                int totalGenerations = 0;
+
+                islandEvolver.PopulationUpdated += (img, fitnesse, pop, generation, diffImg, elapsed, zoom, stats) =>
+                {
+                    finalFitnesse = fitnesse;
+                    finalGeneration = generation;
+                };
+
+                // Run for the same wall-clock time as the single-island benchmark would take (~120s)
+                // This measures how much better the multi-island approach is in the same time budget
+                int runTimeMs = 120_000;
+                var stopwatch = Stopwatch.StartNew();
+                islandEvolver.Start();
+
+                while (stopwatch.ElapsedMilliseconds < runTimeMs)
+                {
+                    System.Threading.Thread.Sleep(100);
+                }
+
+                totalGenerations = islandEvolver.TotalGenerations;
+                islandEvolver.Stop();
+                stopwatch.Stop();
+
+                var mutationStats = islandEvolver.GetMutationStats();
+
+                var branchName = GetBranchName();
+                var timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss UTC");
+                var elapsedMs = stopwatch.ElapsedMilliseconds;
+
+                var result = new StringBuilder();
+                result.AppendLine($"# Benchmark Results (Multi-Island)");
+                result.AppendLine();
+                result.AppendLine($"## Run Configuration");
+                result.AppendLine($"- Branch: {branchName}");
+                result.AppendLine($"- Timestamp: {timestamp}");
+                result.AppendLine($"- Run Time Budget: {runTimeMs} ms");
+                result.AppendLine($"- Islands: {islandCount}");
+                result.AppendLine($"- Target Image: MonaLisa.jpg");
+                result.AppendLine($"- Target Image Size: {targetImage.Width}x{targetImage.Height}");
+                result.AppendLine();
+                result.AppendLine($"## Results");
+                result.AppendLine($"- Elapsed Time: {elapsedMs} ms");
+                result.AppendLine($"- Final Generation (best island): {finalGeneration}");
+                result.AppendLine($"- Total Generations (all islands): {totalGenerations}");
+                result.AppendLine($"- Final Fitness: {finalFitnesse}");
+                result.AppendLine();
+                result.AppendLine("## Mutation Statistics");
+                result.AppendLine(mutationStats);
+
+                var docsPath = Path.Combine(GetSolutionDirectory(), "docs");
+                Directory.CreateDirectory(docsPath);
+
+                var fileName = $"benchmark-islands-{branchName.Replace("/", "-")}-{timestamp.Replace(" ", "-").Replace(":", "-")}.md".ToLower();
+                var filePath = Path.Combine(docsPath, fileName);
+                File.WriteAllText(filePath, result.ToString());
+
+                Console.WriteLine(result.ToString());
+                Console.WriteLine($"Benchmark saved to: {filePath}");
+            }
+        }
+
         private string GetBranchName()
         {
             try

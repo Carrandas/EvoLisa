@@ -28,6 +28,11 @@ namespace GABase
         private long _previousFitnesse = long.MaxValue;
         private readonly Stopwatch _stopwatch;
         private long _lastUpdate;
+        private long[,] _differences;
+
+        // Island model support
+        internal volatile Population _pendingMigrant;
+        public long CurrentFitness { get; private set; } = long.MaxValue;
 
         private MutationWeightStats[] _mutationStats;
         private readonly object _statsLock = new object();
@@ -108,6 +113,18 @@ namespace GABase
 
         private void RunEvolution()
         {
+            try
+            {
+                RunEvolutionCore();
+            }
+            catch (Exception)
+            {
+                // Prevent unhandled exceptions from crashing the process in .NET 9
+            }
+        }
+
+        private void RunEvolutionCore()
+        {
             _popA = new Population(Settings.MaxPolygonCount);
             _popA.GenerateRandomChromosomes();
             Chromosome chromosome = new Chromosome(Settings.MaxPolygonPointCount);
@@ -121,6 +138,17 @@ namespace GABase
 
             while (!_stopRequested)
             {
+                try
+                {
+                // Check for incoming migration from another island
+                var migrant = System.Threading.Interlocked.Exchange(ref _pendingMigrant, null);
+                if (migrant != null)
+                {
+                    _popA = migrant;
+                    _selector.FullRender(_popA);
+                    currentFitness = long.MaxValue;
+                }
+
                 double improvedPercentage = 0.0;
 
                 var selectedMutation = SelectWeightedMutation();
@@ -145,7 +173,7 @@ namespace GABase
                         backup = _mutator.SwitchChromosomesWithBackup(_popA);
                         break;
                     case MutationType.AddChromosome:
-                        backup = _mutator.AddChromosomeWithBackup(_popA, _originalPictureBitmap);
+                        backup = _mutator.AddChromosomeWithBackup(_popA, _originalPictureBitmap, _differences);
                         improvedPercentage = 1;
                         break;
                     case MutationType.RemoveChromosome:
@@ -175,9 +203,13 @@ namespace GABase
                         RecordMutationResult(mutationType, false);
                     }
 
+                    // Update CurrentFitness for island model
+                    CurrentFitness = currentFitness;
+
                     if (_stopwatch.ElapsedMilliseconds > _lastUpdate + 2500)
                     {
-                        var (differenceImage, fitnesse) = DifferencePicture.GetDifferencePictureWithFitness(_popA, _originalPictureBitmap);
+                        var (differenceImage, fitnesse, differences) = DifferencePicture.GetDifferencePictureWithFitness(_popA, _originalPictureBitmap);
+                        _differences = differences;
 
                         var generatedImage = new Bitmap(_popA.GetPicture(), _targetImage.Width, _targetImage.Height);
                         var mutationStats = GetMutationStats();
@@ -192,8 +224,16 @@ namespace GABase
                 }
 
                 _generation++;
+                }
+                catch (Exception) when (!_stopRequested)
+                {
+                    // Can occur during resize when dimensions change between threads — skip this generation
+                }
             }
         }
+
+        // Shared lock to serialize resize operations across all islands
+        private static readonly object _resizeLock = new object();
 
         private void HandleResize(long currentFitnesse)
         {
@@ -201,7 +241,37 @@ namespace GABase
                 (_previousFitnesse - currentFitnesse) * 1.0 / _previousFitnesse < 0.0001 &&
                 _resizeFactor > 1)
             {
+                lock (_resizeLock)
+                {
+                // Check if another island already resized
+                var expectedWidth = _targetImage.Width / (_resizeFactor / 2);
+                if (Settings.ScreenWidth >= expectedWidth)
+                {
+                    // Already resized by another island — just sync our local state
+                    _resizeFactor /= 2;
+                    _differences = null;
+                    ((IDisposable)_originalPictureBitmap).Dispose();
+                    var resized = new Bitmap(_targetImage, new Size(Settings.ScreenWidth, Settings.ScreenHeight));
+                    _originalPictureBitmap = new FastBitmap((Bitmap)(resized.Clone()));
+                    _selector.Dispose();
+                    _selector = new Selector(new FastBitmap((Bitmap)(resized.Clone())));
+                    foreach (var c in _popA.chromosomes)
+                    {
+                        for (var index = 0; index < c.Polygon.Count; index++)
+                        {
+                            var p = c.Polygon[index];
+                            c.Polygon[index] = new Point(Math.Min(p.X * 2, Settings.ScreenWidth), Math.Min(p.Y * 2, Settings.ScreenHeight));
+                        }
+                        c.UpdatePolygonArray();
+                    }
+                    _selector.FullRender(_popA);
+                    var (_, newDiffs) = DifferencePicture.GetDifferencePicture(_popA, _originalPictureBitmap);
+                    _differences = newDiffs;
+                    return;
+                }
+
                 _resizeFactor /= 2;
+                _differences = null;
 
                 Bitmap resizedBitmap;
                 if (_resizeFactor > 1)
@@ -237,7 +307,9 @@ namespace GABase
                 // Full re-render at new resolution
                 _selector.FullRender(_popA);
 
-                DifferencePicture.GetDifferencePicture(_popA, _originalPictureBitmap);
+                var (_, newDifferences) = DifferencePicture.GetDifferencePicture(_popA, _originalPictureBitmap);
+                _differences = newDifferences;
+                } // end lock
             }
         }
 

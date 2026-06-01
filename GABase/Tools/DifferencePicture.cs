@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using System;
 using System.Drawing;
@@ -11,12 +11,9 @@ namespace GAgeneratedImagese.Tools
 {
     public static class DifferencePicture
     {
-        public static long[,] Differences{ get; private set;}
-        public static Image DifferenceImage{ get; private set; }
-
-        public static (Image diffImage, long fitness) GetDifferencePictureWithFitness(Population pop, FastBitmap foriginalImage)
+        public static (Image diffImage, long fitness, long[,] differences) GetDifferencePictureWithFitness(Population pop, FastBitmap foriginalImage)
         {
-            Differences = new long[Settings.ScreenWidth, Settings.ScreenHeight];
+            var differences = new long[Settings.ScreenWidth, Settings.ScreenHeight];
 
             Bitmap generatedImage = pop.GetPicture();
 
@@ -50,7 +47,7 @@ namespace GAgeneratedImagese.Tools
                         fbC.SetPixel(x, y, Color.FromArgb(diff, diff, diff));
 
                         rowTotal += a * a;
-                        Differences[x, y] = rowTotal;
+                        differences[x, y] = rowTotal;
                     }
                     rowTotals[y] = rowTotal;
                 });
@@ -64,13 +61,12 @@ namespace GAgeneratedImagese.Tools
                 bC = fbC.Bitmap;
             }
 
-            DifferenceImage = bC;
-            return (bC, total);
+            return (bC, total, differences);
         }
 
-        public static Image GetDifferencePicture(Population pop, FastBitmap foriginalImage)
+        public static (Image diffImage, long[,] differences) GetDifferencePicture(Population pop, FastBitmap foriginalImage)
         {
-            Differences = new long[Settings.ScreenWidth, Settings.ScreenHeight];
+            var differences = new long[Settings.ScreenWidth, Settings.ScreenHeight];
 
             Bitmap generatedImage = pop.GetPicture();
 
@@ -101,7 +97,7 @@ namespace GAgeneratedImagese.Tools
                         fbC.SetPixel(x, y, Color.FromArgb(diff, diff, diff));
 
                         total += a*a;
-                        Differences[x, y] = total;
+                        differences[x, y] = total;
                     }
                 }
                 fbC.Release();
@@ -109,8 +105,7 @@ namespace GAgeneratedImagese.Tools
                 bC = fbC.Bitmap;
             }
 
-            DifferenceImage = bC;
-            return bC;
+            return (bC, differences);
         }
     }
 }
