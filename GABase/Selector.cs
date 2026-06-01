@@ -33,8 +33,11 @@ namespace GABase
             using (Graphics g = Graphics.FromImage(_currentBestBitmap))
             {
                 g.Clear(Color.Black);
-                foreach (Chromosome chromosome in pop.chromosomes)
+                var chromosomes = pop.chromosomes;
+                int count = chromosomes.Count;
+                for (int i = 0; i < count && i < chromosomes.Count; i++)
                 {
+                    var chromosome = chromosomes[i];
                     using (var brush = new SolidBrush(chromosome.PolyColor))
                     {
                         var points = chromosome.PolygonArray;
@@ -109,8 +112,11 @@ namespace GABase
                 g.SetClip(clipRect);
                 g.Clear(Color.Black);
 
-                foreach (Chromosome chromosome in pop.chromosomes)
+                var chromosomes = pop.chromosomes;
+                int count = chromosomes.Count;
+                for (int i = 0; i < count && i < chromosomes.Count; i++)
                 {
+                    var chromosome = chromosomes[i];
                     if (PolygonOverlapsDirtyArea(clipRect, chromosome))
                     {
                         using (var brush = new SolidBrush(chromosome.PolyColor))

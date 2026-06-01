@@ -34,7 +34,10 @@ namespace GABase
         public Population Clone()
         {
             Population pop = new Population(MaximumSize);
-            foreach (var chromosome in chromosomes)
+            // Snapshot to handle concurrent access from migration timer.
+            // If the list is modified during ToArray(), it may throw — caller should catch.
+            var snapshot = chromosomes.ToArray();
+            foreach (var chromosome in snapshot)
             {
                 pop.chromosomes.Add(chromosome.Clone());
             }
