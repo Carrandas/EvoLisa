@@ -44,14 +44,12 @@ namespace GABase
         public int TargetWidth => _targetImage.Width;
         public int TargetHeight => _targetImage.Height;
 
-        public Evolver(Bitmap targetImage, bool disableResize = false)
+        public Evolver(Bitmap targetImage, bool disableResize = false, int resizeFactor = 4)
         {
             _targetImage = targetImage;
             _disableResize = disableResize;
+            _resizeFactor = resizeFactor;
             _stopwatch = Stopwatch.StartNew();
-
-            if (disableResize)
-                _resizeFactor = 1;
 
             var resizedBitmap = new Bitmap(targetImage,
                 new Size(targetImage.Width / _resizeFactor, targetImage.Height / _resizeFactor));
