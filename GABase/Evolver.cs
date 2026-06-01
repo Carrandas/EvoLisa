@@ -211,17 +211,27 @@ namespace GABase
 
                     if (_stopwatch.ElapsedMilliseconds > _lastUpdate + 2500)
                     {
-                        var (differenceImage, fitnesse, differences) = DifferencePicture.GetDifferencePictureWithFitness(_popA, _originalPictureBitmap);
-                        _differences = differences;
+                        // Skip UI update if dimensions are out of sync (another island resizing)
+                        if (_originalPictureBitmap.Width != Settings.ScreenWidth ||
+                            _originalPictureBitmap.Height != Settings.ScreenHeight)
+                        {
+                            SyncToCurrentDimensions();
+                            currentFitness = long.MaxValue;
+                        }
+                        else
+                        {
+                            var (differenceImage, fitnesse, differences) = DifferencePicture.GetDifferencePictureWithFitness(_popA, _originalPictureBitmap);
+                            _differences = differences;
 
-                        var generatedImage = new Bitmap(_popA.GetPicture(), _targetImage.Width, _targetImage.Height);
-                        var mutationStats = GetMutationStats();
+                            var generatedImage = new Bitmap(_popA.GetPicture(), _targetImage.Width, _targetImage.Height);
+                            var mutationStats = GetMutationStats();
 
-                        PopulationUpdated?.Invoke(generatedImage, fitnesse, _popA, _generation, differenceImage, _stopwatch.ElapsedMilliseconds, _resizeFactor, mutationStats);
+                            PopulationUpdated?.Invoke(generatedImage, fitnesse, _popA, _generation, differenceImage, _stopwatch.ElapsedMilliseconds, _resizeFactor, mutationStats);
 
-                        HandleResize(fitnesse);
+                            HandleResize(fitnesse);
 
-                        _previousFitnesse = fitnesse;
+                            _previousFitnesse = fitnesse;
+                        }
                         _lastUpdate = _stopwatch.ElapsedMilliseconds;
                     }
                 }
