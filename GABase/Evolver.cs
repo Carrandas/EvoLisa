@@ -227,8 +227,63 @@ namespace GABase
                 }
                 catch (Exception) when (!_stopRequested)
                 {
-                    // Can occur during resize when dimensions change between threads — skip this generation
+                    // Dimension mismatch — another island resized Settings.ScreenWidth/Height.
+                    // Sync this island to the new dimensions.
+                    SyncToCurrentDimensions();
+                    currentFitness = long.MaxValue;
                 }
+            }
+        }
+
+        /// <summary>
+        /// Sync this island's bitmaps to match the current Settings.ScreenWidth/Height
+        /// after another island performed a resize.
+        /// </summary>
+        private void SyncToCurrentDimensions()
+        {
+            try
+            {
+                int targetWidth = Settings.ScreenWidth;
+                int targetHeight = Settings.ScreenHeight;
+
+                // Already in sync
+                if (_originalPictureBitmap.Width == targetWidth && _originalPictureBitmap.Height == targetHeight)
+                    return;
+
+                // Figure out what resize factor matches the current dimensions
+                _resizeFactor = Math.Max(1, _targetImage.Width / targetWidth);
+                _differences = null;
+
+                var resizedBitmap = new Bitmap(_targetImage, new Size(targetWidth, targetHeight));
+
+                ((IDisposable)_originalPictureBitmap).Dispose();
+                _originalPictureBitmap = new FastBitmap((Bitmap)(resizedBitmap.Clone()));
+
+                _selector.Dispose();
+                _selector = new Selector(new FastBitmap((Bitmap)(resizedBitmap.Clone())));
+
+                // Scale polygon coordinates to new dimensions
+                int oldWidth = targetWidth / 2; // previous was half the new
+                if (oldWidth > 0)
+                {
+                    foreach (var c in _popA.chromosomes)
+                    {
+                        for (var index = 0; index < c.Polygon.Count; index++)
+                        {
+                            var p = c.Polygon[index];
+                            c.Polygon[index] = new Point(
+                                Math.Min(p.X * 2, targetWidth),
+                                Math.Min(p.Y * 2, targetHeight));
+                        }
+                        c.UpdatePolygonArray();
+                    }
+                }
+
+                _selector.FullRender(_popA);
+            }
+            catch (Exception)
+            {
+                // If sync fails, just continue — next iteration will retry
             }
         }
 
