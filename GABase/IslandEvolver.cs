@@ -194,14 +194,9 @@ namespace GABase
             {
                 if (fitnesse < _bestFitness)
                 {
+                    // New global best — forward it
                     _bestFitness = fitnesse;
                     _bestIslandIndex = islandIndex;
-                    isBest = true;
-                }
-                else if (islandIndex == _bestIslandIndex)
-                {
-                    // Current best island reporting — always forward
-                    _bestFitness = fitnesse;
                     isBest = true;
                 }
             }
