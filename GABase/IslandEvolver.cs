@@ -165,8 +165,7 @@ namespace GABase
                 }
             }
 
-            // Migrate from best to all other islands using ring topology
-            // Each island receives from the previous island in the ring
+            // Migrate using ring topology — island only adopts if migrant is fitter
             for (int i = 0; i < _islandCount; i++)
             {
                 int source = (i - 1 + _islandCount) % _islandCount;
@@ -174,6 +173,7 @@ namespace GABase
                 if (sourcePopulation != null)
                 {
                     var cloned = sourcePopulation.Clone();
+                    _islands[i]._pendingMigrantFitness = _islands[source].CurrentFitness;
                     Interlocked.Exchange(ref _islands[i]._pendingMigrant, cloned);
                 }
             }
