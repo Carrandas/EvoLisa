@@ -165,17 +165,20 @@ namespace GABase
                 }
             }
 
-            // Migrate using ring topology — island only adopts if migrant is fitter
+            // Broadcast best: send the best island's population to all others
+            // Each island will only adopt if the migrant is fitter than its own
+            var bestPopulation = _islands[bestIdx].CurrentPopulation;
+            if (bestPopulation == null)
+                return;
+
             for (int i = 0; i < _islandCount; i++)
             {
-                int source = (i - 1 + _islandCount) % _islandCount;
-                var sourcePopulation = _islands[source].CurrentPopulation;
-                if (sourcePopulation != null)
-                {
-                    var cloned = sourcePopulation.Clone();
-                    _islands[i]._pendingMigrantFitness = _islands[source].CurrentFitness;
-                    Interlocked.Exchange(ref _islands[i]._pendingMigrant, cloned);
-                }
+                if (i == bestIdx)
+                    continue; // Don't send to self
+
+                var cloned = bestPopulation.Clone();
+                _islands[i]._pendingMigrantFitness = bestFit;
+                Interlocked.Exchange(ref _islands[i]._pendingMigrant, cloned);
             }
         }
 
