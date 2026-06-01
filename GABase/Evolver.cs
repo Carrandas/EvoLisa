@@ -23,6 +23,7 @@ namespace GABase
         private Mutator _mutator;
         private Thread _workerThread;
         private volatile bool _stopRequested;
+        private readonly bool _disableResize;
         private int _resizeFactor = 4;
         private int _generation = 1;
         private long _previousFitnesse = long.MaxValue;
@@ -43,10 +44,15 @@ namespace GABase
         public int TargetWidth => _targetImage.Width;
         public int TargetHeight => _targetImage.Height;
 
-        public Evolver(Bitmap targetImage)
+        public Evolver(Bitmap targetImage, bool disableResize = false)
         {
             _targetImage = targetImage;
+            _disableResize = disableResize;
             _stopwatch = Stopwatch.StartNew();
+
+            if (disableResize)
+                _resizeFactor = 1;
+
             var resizedBitmap = new Bitmap(targetImage,
                 new Size(targetImage.Width / _resizeFactor, targetImage.Height / _resizeFactor));
             Settings.ScreenWidth = resizedBitmap.Width;
@@ -305,6 +311,9 @@ namespace GABase
 
         private void HandleResize(long currentFitnesse)
         {
+            if (_disableResize)
+                return;
+
             if (_previousFitnesse > 0 &&
                 (_previousFitnesse - currentFitnesse) * 1.0 / _previousFitnesse < 0.0001 &&
                 _resizeFactor > 1)

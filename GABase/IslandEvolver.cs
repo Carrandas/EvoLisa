@@ -65,7 +65,7 @@ namespace GABase
 
             for (int i = 0; i < _islandCount; i++)
             {
-                _islands[i] = new Evolver(targetImage);
+                _islands[i] = new Evolver(targetImage, disableResize: _islandCount > 1);
                 var islandIndex = i;
                 _islands[i].PopulationUpdated += (img, fitnesse, pop, gen, diffImg, elapsed, zoom, stats) =>
                 {
