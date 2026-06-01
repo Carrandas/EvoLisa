@@ -32,7 +32,8 @@ namespace GABase
 
         // Island model support
         internal volatile Population _pendingMigrant;
-        public long CurrentFitness { get; private set; } = long.MaxValue;
+        internal long _pendingMigrantFitness = long.MaxValue;
+        public long CurrentFitness { get; internal set; } = long.MaxValue;
 
         private MutationWeightStats[] _mutationStats;
         private readonly object _statsLock = new object();
@@ -142,11 +143,13 @@ namespace GABase
                 {
                 // Check for incoming migration from another island
                 var migrant = System.Threading.Interlocked.Exchange(ref _pendingMigrant, null);
-                if (migrant != null)
+                if (migrant != null && _pendingMigrantFitness < CurrentFitness)
                 {
+                    // Only adopt if the migrant is fitter than our current solution
                     _popA = migrant;
                     _selector.FullRender(_popA);
                     currentFitness = long.MaxValue;
+                    CurrentFitness = _pendingMigrantFitness;
                 }
 
                 double improvedPercentage = 0.0;
