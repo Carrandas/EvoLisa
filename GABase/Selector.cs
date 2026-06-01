@@ -58,11 +58,13 @@ namespace GABase
             int maxX = dirtyArea.X + dirtyArea.Width;
             int maxY = dirtyArea.Y + dirtyArea.Height;
 
-            // Clamp to screen bounds
+            // Clamp to actual bitmap dimensions (not Settings, which can change mid-operation)
+            int bmpWidth = _candidateBitmap.Width;
+            int bmpHeight = _candidateBitmap.Height;
             if (minX < 0) minX = 0;
             if (minY < 0) minY = 0;
-            if (maxX > Settings.ScreenWidth) maxX = Settings.ScreenWidth;
-            if (maxY > Settings.ScreenHeight) maxY = Settings.ScreenHeight;
+            if (maxX > bmpWidth) maxX = bmpWidth;
+            if (maxY > bmpHeight) maxY = bmpHeight;
             if (minX >= maxX || minY >= maxY)
             {
                 newPartialFitness = long.MaxValue;
@@ -151,7 +153,7 @@ namespace GABase
                 PixelFormat.Format32bppArgb);
 
             var focusWeightMap = Settings.FocusWeightMap;
-            int screenWidth = Settings.ScreenWidth;
+            int screenWidth = candidate.Width; // Use bitmap width for map indexing (matches bitmap dimensions)
             int bitmapWidth = candidate.Width;
             int pixelsToNextRow = bitmapWidth - width;
             bool hasFocusAreas = Settings.FocusAreas.Count > 0;
