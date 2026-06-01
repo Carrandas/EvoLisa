@@ -189,22 +189,31 @@ namespace GABase
         private void OnIslandUpdated(int islandIndex, Bitmap img, long fitnesse, Population pop,
             int gen, Image diffImg, long elapsed, int zoom, string stats)
         {
-            bool isBest = false;
+            bool shouldForward = false;
+            long displayFitness;
+
             lock (_bestLock)
             {
                 if (fitnesse < _bestFitness)
                 {
-                    // New global best — forward it
                     _bestFitness = fitnesse;
                     _bestIslandIndex = islandIndex;
-                    isBest = true;
+                }
+
+                // Always forward the current best island's updates (so GUI shows progress)
+                // but clamp the displayed fitness to never go up
+                if (islandIndex == _bestIslandIndex)
+                {
+                    shouldForward = true;
                 }
             }
 
-            if (isBest)
+            displayFitness = _bestFitness;
+
+            if (shouldForward)
             {
                 var enrichedStats = $"[Island {islandIndex + 1}/{_islandCount}] {stats}";
-                PopulationUpdated?.Invoke(img, fitnesse, pop, gen, diffImg, elapsed, zoom, enrichedStats);
+                PopulationUpdated?.Invoke(img, displayFitness, pop, gen, diffImg, elapsed, zoom, enrichedStats);
             }
         }
     }
