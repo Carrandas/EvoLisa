@@ -11,6 +11,7 @@ namespace GA
     public partial class frmGA : Form
     {
         IslandEvolver _islandEvolver;
+        Bitmap _cleanOriginalImage; // The unmodified target image (no focus rectangles drawn on it)
         Point _dragStart;
         bool _isDragging;
         Rectangle _currentDragRect;
@@ -56,29 +57,31 @@ namespace GA
 
         private void DrawFocusAreas()
         {
-            if (pictureBoxOriginal.Image == null) return;
-            
-            var tempBitmap = new Bitmap(pictureBoxOriginal.Image);
-            var g = Graphics.FromImage(tempBitmap);
-            foreach (var rect in Settings.FocusAreas)
+            if (_cleanOriginalImage == null) return;
+
+            // Always draw on a fresh copy of the clean image (never mutate the original)
+            var displayBitmap = new Bitmap(_cleanOriginalImage);
+            using (var g = Graphics.FromImage(displayBitmap))
             {
-                using (var pen = new Pen(Color.Red, 2))
+                foreach (var rect in Settings.FocusAreas)
                 {
-                    g.DrawRectangle(pen, rect);
+                    using (var pen = new Pen(Color.Red, 2))
+                    {
+                        g.DrawRectangle(pen, rect);
+                    }
+                }
+                if (_currentDragRect.Width > 0)
+                {
+                    using (var pen = new Pen(Color.Yellow, 2))
+                    {
+                        g.DrawRectangle(pen, _currentDragRect);
+                    }
                 }
             }
-            if (_currentDragRect.Width > 0)
-            {
-                using (var pen = new Pen(Color.Yellow, 2))
-                {
-                    g.DrawRectangle(pen, _currentDragRect);
-                }
-            }
-            g.Dispose();
-            
+
             var oldImage = pictureBoxOriginal.Image;
-            pictureBoxOriginal.Image = tempBitmap;
-            if (oldImage != null && oldImage != pictureBoxGenerated.Image)
+            pictureBoxOriginal.Image = displayBitmap;
+            if (oldImage != null && oldImage != _cleanOriginalImage)
                 oldImage.Dispose();
         }
 
@@ -86,11 +89,11 @@ namespace GA
         {
             Settings.FocusAreas.Clear();
             Settings.InvalidateFocusWeightMap();
-            if (pictureBoxOriginal.Image != null && !string.IsNullOrEmpty(Settings.ImageLocation))
+            if (_cleanOriginalImage != null)
             {
                 var oldImage = pictureBoxOriginal.Image;
-                pictureBoxOriginal.Image = new Bitmap(Settings.ImageLocation);
-                if (oldImage != null && oldImage != pictureBoxGenerated.Image)
+                pictureBoxOriginal.Image = new Bitmap(_cleanOriginalImage);
+                if (oldImage != null && oldImage != _cleanOriginalImage)
                     oldImage.Dispose();
             }
         }
@@ -124,9 +127,10 @@ namespace GA
             if (fileDialog.ShowDialog(this) == DialogResult.OK)
             {
                 Settings.ImageLocation = fileDialog.FileName;
-                //And read file
                 Bitmap bitmap = new Bitmap(fileDialog.FileName);
 
+                _cleanOriginalImage?.Dispose();
+                _cleanOriginalImage = (Bitmap)bitmap.Clone();
                 pictureBoxOriginal.Image = bitmap;
                 pictureBoxOriginal.Width = bitmap.Width;
                 pictureBoxGenerated.Width = bitmap.Width;
@@ -145,7 +149,7 @@ namespace GA
         {
             if (_islandEvolver == null || !IsEvolverRunning())
             {
-                _islandEvolver = new IslandEvolver((Bitmap)pictureBoxOriginal.Image);
+                _islandEvolver = new IslandEvolver(_cleanOriginalImage ?? (Bitmap)pictureBoxOriginal.Image);
                 _islandEvolver.Priority = ThreadPriority.Normal;
                 _islandEvolver.PopulationUpdated += UpdateGui;
                 _islandEvolver.Start();
