@@ -3,8 +3,6 @@
 using System;
 using System.Drawing;
 using System.Drawing.Imaging;
-using System.Runtime.Intrinsics;
-using System.Runtime.Intrinsics.X86;
 
 #endregion
 
@@ -166,73 +164,12 @@ namespace GABase
                     Pixel* pCurr = (Pixel*)cbBd.Scan0.ToPointer();
                     Pixel* pRef = (Pixel*)refBd.Scan0.ToPointer();
 
-                    if (Sse2.IsSupported && !hasFocusAreas)
+                    if (!hasFocusAreas)
                     {
-                        // SSE2 fast path: process 4 pixels (16 bytes) at a time, no weighting
-                        var zeroByte = Vector128<byte>.Zero;
-
+                        // Fast path: no focus weight lookup needed (all weights = 1)
                         for (int y = 0; y < height; y++)
                         {
-                            int x = 0;
-                            int simdWidth = width - (width % 4);
-
-                            for (; x < simdWidth; x += 4)
-                            {
-                                // Load 4 pixels (4x4 bytes = 16 bytes) from each source
-                                var vCand = Sse2.LoadVector128((byte*)pCand);
-                                var vCurr = Sse2.LoadVector128((byte*)pCurr);
-                                var vRef = Sse2.LoadVector128((byte*)pRef);
-
-                                // Unpack low 8 pixels to 16-bit for candidate vs ref
-                                var candLo = Sse2.UnpackLow(vCand, zeroByte);   // pixels 0-1 as 16-bit
-                                var candHi = Sse2.UnpackHigh(vCand, zeroByte);  // pixels 2-3 as 16-bit
-                                var refLo = Sse2.UnpackLow(vRef, zeroByte);
-                                var refHi = Sse2.UnpackHigh(vRef, zeroByte);
-                                var currLo = Sse2.UnpackLow(vCurr, zeroByte);
-                                var currHi = Sse2.UnpackHigh(vCurr, zeroByte);
-
-                                // Subtract: candidate - ref (signed 16-bit)
-                                var diffCandLo = Sse2.Subtract(candLo.AsInt16(), refLo.AsInt16());
-                                var diffCandHi = Sse2.Subtract(candHi.AsInt16(), refHi.AsInt16());
-                                var diffCurrLo = Sse2.Subtract(currLo.AsInt16(), refLo.AsInt16());
-                                var diffCurrHi = Sse2.Subtract(currHi.AsInt16(), refHi.AsInt16());
-
-                                // Square (multiply by self) — result is 16-bit (max 255*255=65025 fits)
-                                var sqCandLo = Sse2.MultiplyLow(diffCandLo, diffCandLo);
-                                var sqCandHi = Sse2.MultiplyLow(diffCandHi, diffCandHi);
-                                var sqCurrLo = Sse2.MultiplyLow(diffCurrLo, diffCurrLo);
-                                var sqCurrHi = Sse2.MultiplyLow(diffCurrHi, diffCurrHi);
-
-                                // Accumulate per pixel: for each pixel sum R²+G²+B² (skip A)
-                                // Each pixel is [B,G,R,A] as 4 x int16
-                                // Pixel 0: elements 0,1,2 (B,G,R); Pixel 1: elements 4,5,6
-                                // Scalar accumulation of the squared differences
-                                short* sCandLo = (short*)&sqCandLo;
-                                short* sCandHi = (short*)&sqCandHi;
-                                short* sCurrLo = (short*)&sqCurrLo;
-                                short* sCurrHi = (short*)&sqCurrHi;
-
-                                // Pixel 0 (in Lo): B=0, G=1, R=2, A=3
-                                fitnessCand += sCandLo[0] + sCandLo[1] + sCandLo[2];
-                                // Pixel 1 (in Lo): B=4, G=5, R=6, A=7
-                                fitnessCand += sCandLo[4] + sCandLo[5] + sCandLo[6];
-                                // Pixel 2 (in Hi): B=0, G=1, R=2, A=3
-                                fitnessCand += sCandHi[0] + sCandHi[1] + sCandHi[2];
-                                // Pixel 3 (in Hi): B=4, G=5, R=6, A=7
-                                fitnessCand += sCandHi[4] + sCandHi[5] + sCandHi[6];
-
-                                fitnessCurr += sCurrLo[0] + sCurrLo[1] + sCurrLo[2];
-                                fitnessCurr += sCurrLo[4] + sCurrLo[5] + sCurrLo[6];
-                                fitnessCurr += sCurrHi[0] + sCurrHi[1] + sCurrHi[2];
-                                fitnessCurr += sCurrHi[4] + sCurrHi[5] + sCurrHi[6];
-
-                                pCand += 4;
-                                pCurr += 4;
-                                pRef += 4;
-                            }
-
-                            // Scalar tail for remaining pixels
-                            for (; x < width; x++)
+                            for (int x = 0; x < width; x++)
                             {
                                 int rc = pCand->R - pRef->R;
                                 int gc = pCand->G - pRef->G;
