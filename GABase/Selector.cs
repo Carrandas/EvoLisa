@@ -25,6 +25,12 @@ namespace GABase
         private readonly int _referenceWidth;
         private readonly int _referenceHeight;
 
+        // Cached per-pixel squared error (unweighted) of the current-best image vs the
+        // reference. Lets the fitness comparison read the current-best contribution as a
+        // plain sum instead of recomputing it from pixels (and locking the bitmap) every
+        // mutation. Kept in sync incrementally on accept and rebuilt on full re-render.
+        private readonly int[] _currentBestError;
+
         public Selector(FastBitmap fOriginalBitMap)
         {
             _resizedOriginalImage = fOriginalBitMap;
@@ -41,6 +47,9 @@ namespace GABase
             _referenceWidth = _referenceBitmap.Width;
             _referenceHeight = _referenceBitmap.Height;
             _referencePixels = SnapshotReferencePixels(_referenceBitmap, _referenceWidth, _referenceHeight);
+
+            _currentBestError = new int[_referenceWidth * _referenceHeight];
+            RebuildCurrentBestError();
         }
 
         /// <summary>
@@ -93,6 +102,56 @@ namespace GABase
                 else
                     g.FillClosedCurve(_brush, points);
             }
+
+            // The current-best raster changed wholesale; rebuild the cached per-pixel error.
+            RebuildCurrentBestError();
+        }
+
+        /// <summary>
+        /// Recompute the cached per-pixel squared error for the entire current-best image.
+        /// Call after any full re-render of the current-best bitmap.
+        /// </summary>
+        private void RebuildCurrentBestError()
+        {
+            int width = _currentBestBitmap.Width;
+            int height = _currentBestBitmap.Height;
+            int refWidth = _referenceWidth;
+
+            BitmapData bd = _currentBestBitmap.LockBits(
+                new Rectangle(0, 0, width, height),
+                ImageLockMode.ReadOnly,
+                PixelFormat.Format32bppArgb);
+
+            unchecked
+            {
+                unsafe
+                {
+                    byte* rowPtr = (byte*)bd.Scan0.ToPointer();
+                    fixed (Pixel* pRefBase = _referencePixels)
+                    fixed (int* pErrBase = _currentBestError)
+                    {
+                        for (int y = 0; y < height; y++)
+                        {
+                            Pixel* pCur = (Pixel*)rowPtr;
+                            Pixel* pRef = pRefBase + y * refWidth;
+                            int* pErr = pErrBase + y * refWidth;
+                            for (int x = 0; x < width; x++)
+                            {
+                                int r = pCur->R - pRef->R;
+                                int g = pCur->G - pRef->G;
+                                int b = pCur->B - pRef->B;
+                                *pErr = r * r + g * g + b * b;
+                                pCur++;
+                                pRef++;
+                                pErr++;
+                            }
+                            rowPtr += bd.Stride;
+                        }
+                    }
+                }
+            }
+
+            _currentBestBitmap.UnlockBits(bd);
         }
 
         /// <summary>
@@ -105,8 +164,6 @@ namespace GABase
         /// </summary>
         public bool EvaluateMutation(Population pop, Rectangle dirtyArea, long costDelta, out long newPartialFitness)
         {
-            costDelta = 0;
-
             int minX = dirtyArea.X;
             int minY = dirtyArea.Y;
             int maxX = dirtyArea.X + dirtyArea.Width;
@@ -130,8 +187,9 @@ namespace GABase
             // Ensure all GDI+ drawing is committed before we read raw pixels via LockBits.
             _candidateGraphics.Flush(System.Drawing.Drawing2D.FlushIntention.Sync);
 
-            // Compute both fitnesses in a single pass (one lock on the reference bitmap)
-            ComputeBothPartialFitnesses(_candidateBitmap, _currentBestBitmap, minX, minY, maxX, maxY,
+            // Compute the mutated (candidate) fitness live; the current-best fitness for
+            // the same region comes from the cached per-pixel error (no second lock/recompute).
+            ComputeBothPartialFitnesses(_candidateBitmap, minX, minY, maxX, maxY,
                 out long fitnessMutated, out long fitnessOriginal);
 
             newPartialFitness = fitnessMutated;
@@ -178,10 +236,11 @@ namespace GABase
         }
 
         /// <summary>
-        /// Compute partial fitness for both candidate and currentBest in a single pass.
-        /// Uses SSE2 SIMD to process 4 pixels at a time when no focus areas are set.
+        /// Compute partial fitness for the candidate live against the reference, and the
+        /// current-best partial fitness from the cached per-pixel error buffer (no lock
+        /// or pixel recompute for the current-best image).
         /// </summary>
-        private void ComputeBothPartialFitnesses(Bitmap candidate, Bitmap currentBest,
+        private void ComputeBothPartialFitnesses(Bitmap candidate,
             int minX, int minY, int maxX, int maxY,
             out long fitnessCand, out long fitnessCurr)
         {
@@ -191,10 +250,6 @@ namespace GABase
             int height = maxY - minY;
 
             BitmapData cdBd = candidate.LockBits(
-                new Rectangle(minX, minY, width, height),
-                ImageLockMode.ReadOnly,
-                PixelFormat.Format32bppArgb);
-            BitmapData cbBd = currentBest.LockBits(
                 new Rectangle(minX, minY, width, height),
                 ImageLockMode.ReadOnly,
                 PixelFormat.Format32bppArgb);
@@ -211,9 +266,9 @@ namespace GABase
                 unsafe
                 {
                     Pixel* pCand = (Pixel*)cdBd.Scan0.ToPointer();
-                    Pixel* pCurr = (Pixel*)cbBd.Scan0.ToPointer();
 
                     fixed (Pixel* pRefBase = _referencePixels)
+                    fixed (int* pErrBase = _currentBestError)
                     {
                         if (!hasFocusAreas)
                         {
@@ -221,6 +276,7 @@ namespace GABase
                             for (int y = 0; y < height; y++)
                             {
                                 Pixel* pRef = pRefBase + (minY + y) * refWidth + minX;
+                                int* pErr = pErrBase + (minY + y) * refWidth + minX;
                                 for (int x = 0; x < width; x++)
                                 {
                                     int rc = pCand->R - pRef->R;
@@ -228,18 +284,14 @@ namespace GABase
                                     int bc = pCand->B - pRef->B;
                                     fitnessCand += rc * rc + gc * gc + bc * bc;
 
-                                    int ro = pCurr->R - pRef->R;
-                                    int go = pCurr->G - pRef->G;
-                                    int bo = pCurr->B - pRef->B;
-                                    fitnessCurr += ro * ro + go * go + bo * bo;
+                                    fitnessCurr += *pErr;
 
                                     pCand++;
-                                    pCurr++;
                                     pRef++;
+                                    pErr++;
                                 }
 
                                 pCand += pixelsToNextRow;
-                                pCurr += pixelsToNextRow;
                             }
                         }
                         else
@@ -249,6 +301,7 @@ namespace GABase
                             {
                                 int mapIndex = (minY + y) * screenWidth + minX;
                                 Pixel* pRef = pRefBase + (minY + y) * refWidth + minX;
+                                int* pErr = pErrBase + (minY + y) * refWidth + minX;
                                 for (int x = 0; x < width; x++)
                                 {
                                     int weight = focusWeightMap[mapIndex];
@@ -258,26 +311,21 @@ namespace GABase
                                     int bc = pCand->B - pRef->B;
                                     fitnessCand += (rc * rc + gc * gc + bc * bc) * weight;
 
-                                    int ro = pCurr->R - pRef->R;
-                                    int go = pCurr->G - pRef->G;
-                                    int bo = pCurr->B - pRef->B;
-                                    fitnessCurr += (ro * ro + go * go + bo * bo) * weight;
+                                    fitnessCurr += (long)(*pErr) * weight;
 
                                     pCand++;
-                                    pCurr++;
                                     pRef++;
+                                    pErr++;
                                     mapIndex++;
                                 }
 
                                 pCand += pixelsToNextRow;
-                                pCurr += pixelsToNextRow;
                             }
                         }
                     }
                 }
             }
 
-            currentBest.UnlockBits(cbBd);
             candidate.UnlockBits(cdBd);
         }
 
@@ -339,12 +387,14 @@ namespace GABase
         }
 
         /// <summary>
-        /// Copy a dirty area from source bitmap to destination bitmap using raw pixel copy.
+        /// Copy a dirty area from source bitmap to destination bitmap, and refresh the
+        /// cached per-pixel error for that region (the source is the newly accepted best).
         /// </summary>
         private void CopyDirtyArea(Bitmap source, Bitmap dest, int minX, int minY, int maxX, int maxY)
         {
             int width = maxX - minX;
             int height = maxY - minY;
+            int refWidth = _referenceWidth;
 
             BitmapData srcData = source.LockBits(
                 new Rectangle(minX, minY, width, height),
@@ -355,17 +405,39 @@ namespace GABase
                 ImageLockMode.WriteOnly,
                 PixelFormat.Format32bppArgb);
 
-            unsafe
+            unchecked
             {
-                byte* srcPtr = (byte*)srcData.Scan0.ToPointer();
-                byte* dstPtr = (byte*)dstData.Scan0.ToPointer();
-                int bytesPerRow = width * 4; // 32bpp = 4 bytes per pixel
-
-                for (int y = 0; y < height; y++)
+                unsafe
                 {
-                    Buffer.MemoryCopy(srcPtr, dstPtr, bytesPerRow, bytesPerRow);
-                    srcPtr += srcData.Stride;
-                    dstPtr += dstData.Stride;
+                    byte* srcRow = (byte*)srcData.Scan0.ToPointer();
+                    byte* dstRow = (byte*)dstData.Scan0.ToPointer();
+                    fixed (Pixel* pRefBase = _referencePixels)
+                    fixed (int* pErrBase = _currentBestError)
+                    {
+                        for (int y = 0; y < height; y++)
+                        {
+                            Pixel* pSrc = (Pixel*)srcRow;
+                            Pixel* pDst = (Pixel*)dstRow;
+                            Pixel* pRef = pRefBase + (minY + y) * refWidth + minX;
+                            int* pErr = pErrBase + (minY + y) * refWidth + minX;
+                            for (int x = 0; x < width; x++)
+                            {
+                                *pDst = *pSrc;
+
+                                int r = pSrc->R - pRef->R;
+                                int g = pSrc->G - pRef->G;
+                                int b = pSrc->B - pRef->B;
+                                *pErr = r * r + g * g + b * b;
+
+                                pSrc++;
+                                pDst++;
+                                pRef++;
+                                pErr++;
+                            }
+                            srcRow += srcData.Stride;
+                            dstRow += dstData.Stride;
+                        }
+                    }
                 }
             }
 
