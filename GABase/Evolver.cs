@@ -181,10 +181,10 @@ namespace GABase
                         break;
                     case MutationType.AddChromosome:
                         backup = _mutator.AddChromosomeWithBackup(_popA, _originalPictureBitmap, _differences);
-                        improvedPercentage = 1;
+                        improvedPercentage = -1;
                         break;
                     case MutationType.RemoveChromosome:
-                        improvedPercentage = -1;
+                        improvedPercentage = 1;
                         backup = _mutator.RemoveChromosomeWithBackup(_popA);
                         break;
                     default:

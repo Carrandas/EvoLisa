@@ -15,6 +15,16 @@ namespace GABase
         private Bitmap _currentBestBitmap;
         private Bitmap _candidateBitmap;
 
+        // Persistent GDI resources reused across every mutation to avoid per-generation allocations.
+        private readonly Graphics _currentBestGraphics;
+        private readonly Graphics _candidateGraphics;
+        private readonly SolidBrush _brush;
+
+        // Snapshot of the reference image pixels so we never have to LockBits it per evaluation.
+        private readonly Pixel[] _referencePixels;
+        private readonly int _referenceWidth;
+        private readonly int _referenceHeight;
+
         public Selector(FastBitmap fOriginalBitMap)
         {
             _resizedOriginalImage = fOriginalBitMap;
@@ -23,6 +33,44 @@ namespace GABase
                 PixelFormat.Format32bppArgb);
             _currentBestBitmap = new Bitmap(Settings.ScreenWidth, Settings.ScreenHeight, PixelFormat.Format32bppArgb);
             _candidateBitmap = new Bitmap(Settings.ScreenWidth, Settings.ScreenHeight, PixelFormat.Format32bppArgb);
+
+            _currentBestGraphics = Graphics.FromImage(_currentBestBitmap);
+            _candidateGraphics = Graphics.FromImage(_candidateBitmap);
+            _brush = new SolidBrush(Color.Black);
+
+            _referenceWidth = _referenceBitmap.Width;
+            _referenceHeight = _referenceBitmap.Height;
+            _referencePixels = SnapshotReferencePixels(_referenceBitmap, _referenceWidth, _referenceHeight);
+        }
+
+        /// <summary>
+        /// Copy the reference image into a managed Pixel array once so the per-mutation
+        /// fitness loop never needs to LockBits/UnlockBits the reference bitmap.
+        /// </summary>
+        private static Pixel[] SnapshotReferencePixels(Bitmap reference, int width, int height)
+        {
+            var pixels = new Pixel[width * height];
+            BitmapData bd = reference.LockBits(
+                new Rectangle(0, 0, width, height),
+                ImageLockMode.ReadOnly,
+                PixelFormat.Format32bppArgb);
+            unsafe
+            {
+                byte* rowPtr = (byte*)bd.Scan0.ToPointer();
+                fixed (Pixel* dstBase = pixels)
+                {
+                    for (int y = 0; y < height; y++)
+                    {
+                        Pixel* src = (Pixel*)rowPtr;
+                        Pixel* dst = dstBase + y * width;
+                        for (int x = 0; x < width; x++)
+                            dst[x] = src[x];
+                        rowPtr += bd.Stride;
+                    }
+                }
+            }
+            reference.UnlockBits(bd);
+            return pixels;
         }
 
         /// <summary>
@@ -30,23 +78,20 @@ namespace GABase
         /// </summary>
         public void FullRender(Population pop)
         {
-            using (Graphics g = Graphics.FromImage(_currentBestBitmap))
+            Graphics g = _currentBestGraphics;
+            g.ResetClip();
+            g.Clear(Color.Black);
+            var chromosomes = pop.chromosomes;
+            int count = chromosomes.Count;
+            for (int i = 0; i < count && i < chromosomes.Count; i++)
             {
-                g.Clear(Color.Black);
-                var chromosomes = pop.chromosomes;
-                int count = chromosomes.Count;
-                for (int i = 0; i < count && i < chromosomes.Count; i++)
-                {
-                    var chromosome = chromosomes[i];
-                    using (var brush = new SolidBrush(chromosome.PolyColor))
-                    {
-                        var points = chromosome.PolygonArray;
-                        if (Settings.Polygon == Settings.PolygonType.Lines)
-                            g.FillPolygon(brush, points);
-                        else
-                            g.FillClosedCurve(brush, points);
-                    }
-                }
+                var chromosome = chromosomes[i];
+                _brush.Color = chromosome.PolyColor;
+                var points = chromosome.PolygonArray;
+                if (Settings.Polygon == Settings.PolygonType.Lines)
+                    g.FillPolygon(_brush, points);
+                else
+                    g.FillClosedCurve(_brush, points);
             }
         }
 
@@ -76,6 +121,8 @@ namespace GABase
 
             // Render the mutated population in the dirty area onto the candidate bitmap
             RenderDirtyArea(pop, _candidateBitmap, minX, minY, maxX, maxY);
+            // Ensure all GDI+ drawing is committed before we read raw pixels via LockBits.
+            _candidateGraphics.Flush(System.Drawing.Drawing2D.FlushIntention.Sync);
 
             // Compute both fitnesses in a single pass (one lock on the reference bitmap)
             ComputeBothPartialFitnesses(_candidateBitmap, _currentBestBitmap, minX, minY, maxX, maxY,
@@ -107,27 +154,23 @@ namespace GABase
         private void RenderDirtyArea(Population pop, Bitmap target, int minX, int minY, int maxX, int maxY)
         {
             var clipRect = new Rectangle(minX, minY, maxX - minX, maxY - minY);
-            using (Graphics g = Graphics.FromImage(target))
-            {
-                g.SetClip(clipRect);
-                g.Clear(Color.Black);
+            Graphics g = _candidateGraphics;
+            g.SetClip(clipRect);
+            g.Clear(Color.Black);
 
-                var chromosomes = pop.chromosomes;
-                int count = chromosomes.Count;
-                for (int i = 0; i < count && i < chromosomes.Count; i++)
+            var chromosomes = pop.chromosomes;
+            int count = chromosomes.Count;
+            for (int i = 0; i < count && i < chromosomes.Count; i++)
+            {
+                var chromosome = chromosomes[i];
+                if (PolygonOverlapsDirtyArea(clipRect, chromosome))
                 {
-                    var chromosome = chromosomes[i];
-                    if (PolygonOverlapsDirtyArea(clipRect, chromosome))
-                    {
-                        using (var brush = new SolidBrush(chromosome.PolyColor))
-                        {
-                            var points = chromosome.PolygonArray;
-                            if (Settings.Polygon == Settings.PolygonType.Lines)
-                                g.FillPolygon(brush, points);
-                            else
-                                g.FillClosedCurve(brush, points);
-                        }
-                    }
+                    _brush.Color = chromosome.PolyColor;
+                    var points = chromosome.PolygonArray;
+                    if (Settings.Polygon == Settings.PolygonType.Lines)
+                        g.FillPolygon(_brush, points);
+                    else
+                        g.FillClosedCurve(_brush, points);
                 }
             }
         }
@@ -153,15 +196,12 @@ namespace GABase
                 new Rectangle(minX, minY, width, height),
                 ImageLockMode.ReadOnly,
                 PixelFormat.Format32bppArgb);
-            BitmapData refBd = _referenceBitmap.LockBits(
-                new Rectangle(minX, minY, width, height),
-                ImageLockMode.ReadOnly,
-                PixelFormat.Format32bppArgb);
 
             var focusWeightMap = Settings.FocusWeightMap;
             int screenWidth = candidate.Width; // Use bitmap width for map indexing (matches bitmap dimensions)
             int bitmapWidth = candidate.Width;
             int pixelsToNextRow = bitmapWidth - width;
+            int refWidth = _referenceWidth;
             bool hasFocusAreas = Settings.FocusAreas.Count > 0;
 
             unchecked
@@ -170,70 +210,71 @@ namespace GABase
                 {
                     Pixel* pCand = (Pixel*)cdBd.Scan0.ToPointer();
                     Pixel* pCurr = (Pixel*)cbBd.Scan0.ToPointer();
-                    Pixel* pRef = (Pixel*)refBd.Scan0.ToPointer();
 
-                    if (!hasFocusAreas)
+                    fixed (Pixel* pRefBase = _referencePixels)
                     {
-                        // Fast path: no focus weight lookup needed (all weights = 1)
-                        for (int y = 0; y < height; y++)
+                        if (!hasFocusAreas)
                         {
-                            for (int x = 0; x < width; x++)
+                            // Fast path: no focus weight lookup needed (all weights = 1)
+                            for (int y = 0; y < height; y++)
                             {
-                                int rc = pCand->R - pRef->R;
-                                int gc = pCand->G - pRef->G;
-                                int bc = pCand->B - pRef->B;
-                                fitnessCand += rc * rc + gc * gc + bc * bc;
+                                Pixel* pRef = pRefBase + (minY + y) * refWidth + minX;
+                                for (int x = 0; x < width; x++)
+                                {
+                                    int rc = pCand->R - pRef->R;
+                                    int gc = pCand->G - pRef->G;
+                                    int bc = pCand->B - pRef->B;
+                                    fitnessCand += rc * rc + gc * gc + bc * bc;
 
-                                int ro = pCurr->R - pRef->R;
-                                int go = pCurr->G - pRef->G;
-                                int bo = pCurr->B - pRef->B;
-                                fitnessCurr += ro * ro + go * go + bo * bo;
+                                    int ro = pCurr->R - pRef->R;
+                                    int go = pCurr->G - pRef->G;
+                                    int bo = pCurr->B - pRef->B;
+                                    fitnessCurr += ro * ro + go * go + bo * bo;
 
-                                pCand++;
-                                pCurr++;
-                                pRef++;
+                                    pCand++;
+                                    pCurr++;
+                                    pRef++;
+                                }
+
+                                pCand += pixelsToNextRow;
+                                pCurr += pixelsToNextRow;
                             }
-
-                            pCand += pixelsToNextRow;
-                            pCurr += pixelsToNextRow;
-                            pRef += pixelsToNextRow;
                         }
-                    }
-                    else
-                    {
-                        // Scalar fallback (with focus weight support)
-                        for (int y = 0; y < height; y++)
+                        else
                         {
-                            int mapIndex = (minY + y) * screenWidth + minX;
-                            for (int x = 0; x < width; x++)
+                            // Scalar fallback (with focus weight support)
+                            for (int y = 0; y < height; y++)
                             {
-                                int weight = focusWeightMap[mapIndex];
+                                int mapIndex = (minY + y) * screenWidth + minX;
+                                Pixel* pRef = pRefBase + (minY + y) * refWidth + minX;
+                                for (int x = 0; x < width; x++)
+                                {
+                                    int weight = focusWeightMap[mapIndex];
 
-                                int rc = pCand->R - pRef->R;
-                                int gc = pCand->G - pRef->G;
-                                int bc = pCand->B - pRef->B;
-                                fitnessCand += (rc * rc + gc * gc + bc * bc) * weight;
+                                    int rc = pCand->R - pRef->R;
+                                    int gc = pCand->G - pRef->G;
+                                    int bc = pCand->B - pRef->B;
+                                    fitnessCand += (rc * rc + gc * gc + bc * bc) * weight;
 
-                                int ro = pCurr->R - pRef->R;
-                                int go = pCurr->G - pRef->G;
-                                int bo = pCurr->B - pRef->B;
-                                fitnessCurr += (ro * ro + go * go + bo * bo) * weight;
+                                    int ro = pCurr->R - pRef->R;
+                                    int go = pCurr->G - pRef->G;
+                                    int bo = pCurr->B - pRef->B;
+                                    fitnessCurr += (ro * ro + go * go + bo * bo) * weight;
 
-                                pCand++;
-                                pCurr++;
-                                pRef++;
-                                mapIndex++;
+                                    pCand++;
+                                    pCurr++;
+                                    pRef++;
+                                    mapIndex++;
+                                }
+
+                                pCand += pixelsToNextRow;
+                                pCurr += pixelsToNextRow;
                             }
-
-                            pCand += pixelsToNextRow;
-                            pCurr += pixelsToNextRow;
-                            pRef += pixelsToNextRow;
                         }
                     }
                 }
             }
 
-            _referenceBitmap.UnlockBits(refBd);
             currentBest.UnlockBits(cbBd);
             candidate.UnlockBits(cdBd);
         }
@@ -496,6 +537,9 @@ namespace GABase
 
         public void Dispose()
         {
+            _candidateGraphics?.Dispose();
+            _currentBestGraphics?.Dispose();
+            _brush?.Dispose();
             _currentBestBitmap?.Dispose();
             _candidateBitmap?.Dispose();
             _referenceBitmap?.Dispose();
