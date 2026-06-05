@@ -39,7 +39,8 @@ namespace GABase
             var snapshot = chromosomes.ToArray();
             foreach (var chromosome in snapshot)
             {
-                pop.chromosomes.Add(chromosome.Clone());
+                if (chromosome != null)
+                    pop.chromosomes.Add(chromosome.Clone());
             }
             return pop;
         }

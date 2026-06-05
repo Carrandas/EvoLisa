@@ -18,6 +18,12 @@ namespace GABase.Rendering
         private readonly int _width;
         private readonly int _height;
 
+        // Sub-pixel translation applied to polygon geometry (not the clip/clear) so Skia's
+        // pixel-center coverage sampling aligns with GDI+. GDI+ treats integer coordinates
+        // as grid intersections; shifting Skia by half a pixel makes the two rasterizers
+        // agree on edge pixels. Tunable so the cross-render diff harness can sweep it.
+        public static float PixelOffset = 0.5f;
+
         private readonly SKBitmap _currentBest;
         private readonly SKBitmap _candidate;
         private readonly SKCanvas _currentBestCanvas;
@@ -51,16 +57,23 @@ namespace GABase.Rendering
 
         public void RenderFull(Population pop)
         {
-            _currentBestCanvas.Clear(SKColors.Black);
-            FillPolygons(_currentBestCanvas, pop, null);
+            var canvas = _currentBestCanvas;
+            canvas.Save();
+            canvas.Clear(SKColors.Black);
+            canvas.Translate(PixelOffset, PixelOffset);
+            FillPolygons(canvas, pop, null);
+            canvas.Restore();
         }
 
         public void RenderCandidateDirty(Population pop, Rectangle clip)
         {
             var canvas = _candidateCanvas;
             canvas.Save();
+            // Clip and clear in device space (integer pixels)...
             canvas.ClipRect(SKRect.Create(clip.X, clip.Y, clip.Width, clip.Height));
             canvas.Clear(SKColors.Black);
+            // ...then shift only the polygon geometry to align edge sampling with GDI+.
+            canvas.Translate(PixelOffset, PixelOffset);
             FillPolygons(canvas, pop, clip);
             canvas.Restore();
             // CPU raster writes straight to the pixel buffer; no flush needed.
