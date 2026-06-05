@@ -1,10 +1,10 @@
 #region
 
 using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
-using System.Runtime.Intrinsics;
-using System.Runtime.Intrinsics.X86;
+using GABase.Rendering;
 
 #endregion
 
@@ -14,13 +14,10 @@ namespace GABase
     {
         private readonly FastBitmap _resizedOriginalImage;
         private readonly Bitmap _referenceBitmap;
-        private Bitmap _currentBestBitmap;
-        private Bitmap _candidateBitmap;
 
-        // Persistent GDI resources reused across every mutation to avoid per-generation allocations.
-        private readonly Graphics _currentBestGraphics;
-        private readonly Graphics _candidateGraphics;
-        private readonly SolidBrush _brush;
+        // Pluggable rasterization backend (GDI+ or SkiaSharp CPU raster) that owns the
+        // current-best and candidate pixel buffers and renders polygons into them.
+        private readonly IRasterBackend _backend;
 
         // Snapshot of the reference image pixels so we never have to LockBits it per evaluation.
         private readonly Pixel[] _referencePixels;
@@ -29,9 +26,18 @@ namespace GABase
 
         // Cached per-pixel squared error (unweighted) of the current-best image vs the
         // reference. Lets the fitness comparison read the current-best contribution as a
-        // plain sum instead of recomputing it from pixels (and locking the bitmap) every
-        // mutation. Kept in sync incrementally on accept and rebuilt on full re-render.
+        // plain sum instead of recomputing it from pixels every mutation. Kept in sync
+        // incrementally on accept and rebuilt on full re-render.
         private readonly int[] _currentBestError;
+
+        // Opt-in phase profiling (off by default = zero overhead in the hot path).
+        // When enabled, accumulates wall-clock spent in each phase of EvaluateMutation.
+        public static bool ProfilingEnabled = false;
+        private long _renderTicks;
+        private long _fitnessTicks;
+        private long _copyTicks;
+        private long _evalCount;
+        private long _acceptCount;
 
         public Selector(FastBitmap fOriginalBitMap)
         {
@@ -39,12 +45,10 @@ namespace GABase
             _referenceBitmap = fOriginalBitMap.Bitmap.Clone(
                 new Rectangle(0, 0, fOriginalBitMap.Width, fOriginalBitMap.Height),
                 PixelFormat.Format32bppArgb);
-            _currentBestBitmap = new Bitmap(Settings.ScreenWidth, Settings.ScreenHeight, PixelFormat.Format32bppArgb);
-            _candidateBitmap = new Bitmap(Settings.ScreenWidth, Settings.ScreenHeight, PixelFormat.Format32bppArgb);
 
-            _currentBestGraphics = Graphics.FromImage(_currentBestBitmap);
-            _candidateGraphics = Graphics.FromImage(_candidateBitmap);
-            _brush = new SolidBrush(Color.Black);
+            _backend = Settings.UseSkiaRenderer
+                ? new SkiaRasterBackend(Settings.ScreenWidth, Settings.ScreenHeight)
+                : new GdiRasterBackend(Settings.ScreenWidth, Settings.ScreenHeight);
 
             _referenceWidth = _referenceBitmap.Width;
             _referenceHeight = _referenceBitmap.Height;
@@ -85,25 +89,11 @@ namespace GABase
         }
 
         /// <summary>
-        /// Render the full population to the currentBestBitmap cache. Call after initialization and resize.
+        /// Render the full population to the current-best buffer. Call after initialization and resize.
         /// </summary>
         public void FullRender(Population pop)
         {
-            Graphics g = _currentBestGraphics;
-            g.ResetClip();
-            g.Clear(Color.Black);
-            var chromosomes = pop.chromosomes;
-            int count = chromosomes.Count;
-            for (int i = 0; i < count && i < chromosomes.Count; i++)
-            {
-                var chromosome = chromosomes[i];
-                _brush.Color = chromosome.PolyColor;
-                var points = chromosome.PolygonArray;
-                if (Settings.Polygon == Settings.PolygonType.Lines)
-                    g.FillPolygon(_brush, points);
-                else
-                    g.FillClosedCurve(_brush, points);
-            }
+            _backend.RenderFull(pop);
 
             // The current-best raster changed wholesale; rebuild the cached per-pixel error.
             RebuildCurrentBestError();
@@ -111,49 +101,22 @@ namespace GABase
 
         /// <summary>
         /// Recompute the cached per-pixel squared error for the entire current-best image.
-        /// Call after any full re-render of the current-best bitmap.
+        /// Call after any full re-render of the current-best buffer.
         /// </summary>
         private void RebuildCurrentBestError()
         {
-            int width = _currentBestBitmap.Width;
-            int height = _currentBestBitmap.Height;
-            int refWidth = _referenceWidth;
-
-            BitmapData bd = _currentBestBitmap.LockBits(
-                new Rectangle(0, 0, width, height),
-                ImageLockMode.ReadOnly,
-                PixelFormat.Format32bppArgb);
-
-            unchecked
+            var region = new Rectangle(0, 0, _referenceWidth, _referenceHeight);
+            PixelView pv = _backend.LockCurrentBest(region, false);
+            unsafe
             {
-                unsafe
+                fixed (Pixel* pRef = _referencePixels)
+                fixed (int* pErr = _currentBestError)
                 {
-                    byte* rowPtr = (byte*)bd.Scan0.ToPointer();
-                    fixed (Pixel* pRefBase = _referencePixels)
-                    fixed (int* pErrBase = _currentBestError)
-                    {
-                        for (int y = 0; y < height; y++)
-                        {
-                            Pixel* pCur = (Pixel*)rowPtr;
-                            Pixel* pRef = pRefBase + y * refWidth;
-                            int* pErr = pErrBase + y * refWidth;
-                            for (int x = 0; x < width; x++)
-                            {
-                                int r = pCur->R - pRef->R;
-                                int g = pCur->G - pRef->G;
-                                int b = pCur->B - pRef->B;
-                                *pErr = r * r + g * g + b * b;
-                                pCur++;
-                                pRef++;
-                                pErr++;
-                            }
-                            rowPtr += bd.Stride;
-                        }
-                    }
+                    PixelMath.RebuildError(pv.Scan0, pv.Stride, pRef, _referenceWidth, pErr,
+                        _referenceWidth, _referenceHeight);
                 }
             }
-
-            _currentBestBitmap.UnlockBits(bd);
+            _backend.UnlockCurrentBest();
         }
 
         /// <summary>
@@ -171,9 +134,9 @@ namespace GABase
             int maxX = dirtyArea.X + dirtyArea.Width;
             int maxY = dirtyArea.Y + dirtyArea.Height;
 
-            // Clamp to actual bitmap dimensions (not Settings, which can change mid-operation)
-            int bmpWidth = _candidateBitmap.Width;
-            int bmpHeight = _candidateBitmap.Height;
+            // Clamp to actual buffer dimensions (not Settings, which can change mid-operation)
+            int bmpWidth = _backend.Width;
+            int bmpHeight = _backend.Height;
             if (minX < 0) minX = 0;
             if (minY < 0) minY = 0;
             if (maxX > bmpWidth) maxX = bmpWidth;
@@ -184,15 +147,38 @@ namespace GABase
                 return false;
             }
 
-            // Render the mutated population in the dirty area onto the candidate bitmap
-            RenderDirtyArea(pop, _candidateBitmap, minX, minY, maxX, maxY);
-            // Ensure all GDI+ drawing is committed before we read raw pixels via LockBits.
-            _candidateGraphics.Flush(System.Drawing.Drawing2D.FlushIntention.Sync);
+            int width = maxX - minX;
+            int height = maxY - minY;
+            var region = new Rectangle(minX, minY, width, height);
 
-            // Compute the mutated (candidate) fitness live; the current-best fitness for
-            // the same region comes from the cached per-pixel error (no second lock/recompute).
-            ComputeBothPartialFitnesses(_candidateBitmap, minX, minY, maxX, maxY,
-                out long fitnessMutated, out long fitnessOriginal);
+            bool prof = ProfilingEnabled;
+            long ts0 = prof ? Stopwatch.GetTimestamp() : 0;
+
+            // Render the mutated population in the dirty area onto the candidate buffer.
+            _backend.RenderCandidateDirty(pop, region);
+
+            long ts1 = prof ? Stopwatch.GetTimestamp() : 0;
+
+            // Compute the mutated (candidate) fitness live; the current-best fitness for the
+            // same region comes from the cached per-pixel error (no second recompute).
+            long fitnessMutated, fitnessOriginal;
+            var focusWeightMap = Settings.FocusWeightMap;
+            bool hasFocusAreas = Settings.FocusAreas.Count > 0;
+
+            PixelView pv = _backend.LockCandidate(region, false);
+            unsafe
+            {
+                fixed (Pixel* pRef = _referencePixels)
+                fixed (int* pErr = _currentBestError)
+                {
+                    PixelMath.ComputeBothPartial(pv.Scan0, pv.Stride, pRef, _referenceWidth, pErr,
+                        minX, minY, width, height, focusWeightMap, _backend.Width, hasFocusAreas,
+                        out fitnessMutated, out fitnessOriginal);
+                }
+            }
+            _backend.UnlockCandidate();
+
+            long ts2 = prof ? Stopwatch.GetTimestamp() : 0;
 
             newPartialFitness = fitnessMutated;
 
@@ -203,305 +189,84 @@ namespace GABase
 
             if (accepted)
             {
-                // Copy the dirty area from candidate to currentBest
-                CopyDirtyArea(_candidateBitmap, _currentBestBitmap, minX, minY, maxX, maxY);
+                // Copy the dirty area from candidate to current-best and refresh the cache.
+                PixelView cpv = _backend.LockCandidate(region, false);
+                PixelView bpv = _backend.LockCurrentBest(region, true);
+                unsafe
+                {
+                    fixed (Pixel* pRef = _referencePixels)
+                    fixed (int* pErr = _currentBestError)
+                    {
+                        PixelMath.CopyAndUpdateError(cpv.Scan0, cpv.Stride, bpv.Scan0, bpv.Stride,
+                            pRef, _referenceWidth, pErr, minX, minY, width, height);
+                    }
+                }
+                _backend.UnlockCurrentBest();
+                _backend.UnlockCandidate();
+            }
+
+            if (prof)
+            {
+                long ts3 = Stopwatch.GetTimestamp();
+                _renderTicks += ts1 - ts0;
+                _fitnessTicks += ts2 - ts1;
+                _copyTicks += ts3 - ts2; // copy phase (zero work when rejected)
+                _evalCount++;
+                if (accepted) _acceptCount++;
             }
 
             return accepted;
         }
 
         /// <summary>
-        /// Render only the dirty area of the population onto a target bitmap.
+        /// Reset the accumulated phase-timing counters.
         /// </summary>
-        private void RenderDirtyArea(Population pop, Bitmap target, int minX, int minY, int maxX, int maxY)
+        public void ResetPhaseTimings()
         {
-            var clipRect = new Rectangle(minX, minY, maxX - minX, maxY - minY);
-            Graphics g = _candidateGraphics;
-            g.SetClip(clipRect);
-            g.Clear(Color.Black);
-
-            var chromosomes = pop.chromosomes;
-            int count = chromosomes.Count;
-            for (int i = 0; i < count && i < chromosomes.Count; i++)
-            {
-                var chromosome = chromosomes[i];
-                if (PolygonOverlapsDirtyArea(clipRect, chromosome))
-                {
-                    _brush.Color = chromosome.PolyColor;
-                    var points = chromosome.PolygonArray;
-                    if (Settings.Polygon == Settings.PolygonType.Lines)
-                        g.FillPolygon(_brush, points);
-                    else
-                        g.FillClosedCurve(_brush, points);
-                }
-            }
+            _renderTicks = 0;
+            _fitnessTicks = 0;
+            _copyTicks = 0;
+            _evalCount = 0;
+            _acceptCount = 0;
         }
 
         /// <summary>
-        /// Compute partial fitness for the candidate live against the reference, and the
-        /// current-best partial fitness from the cached per-pixel error buffer (no lock
-        /// or pixel recompute for the current-best image).
+        /// Human-readable breakdown of where EvaluateMutation spent its time, by phase.
+        /// Requires ProfilingEnabled to have been set while running.
         /// </summary>
-        private void ComputeBothPartialFitnesses(Bitmap candidate,
-            int minX, int minY, int maxX, int maxY,
-            out long fitnessCand, out long fitnessCurr)
+        public string GetPhaseTimingsReport()
         {
-            fitnessCand = 0;
-            fitnessCurr = 0;
-            int width = maxX - minX;
-            int height = maxY - minY;
+            double ToMs(long ticks) => ticks * 1000.0 / Stopwatch.Frequency;
+            double render = ToMs(_renderTicks);
+            double fitness = ToMs(_fitnessTicks);
+            double copy = ToMs(_copyTicks);
+            double total = render + fitness + copy;
+            if (total <= 0)
+                return "Phase timings: (no data - ProfilingEnabled was false)";
 
-            BitmapData cdBd = candidate.LockBits(
-                new Rectangle(minX, minY, width, height),
-                ImageLockMode.ReadOnly,
-                PixelFormat.Format32bppArgb);
-
-            var focusWeightMap = Settings.FocusWeightMap;
-            int screenWidth = candidate.Width; // Use bitmap width for map indexing (matches bitmap dimensions)
-            int bitmapWidth = candidate.Width;
-            int pixelsToNextRow = bitmapWidth - width;
-            int refWidth = _referenceWidth;
-            bool hasFocusAreas = Settings.FocusAreas.Count > 0;
-
-            unchecked
-            {
-                unsafe
-                {
-                    Pixel* pCand = (Pixel*)cdBd.Scan0.ToPointer();
-
-                    fixed (Pixel* pRefBase = _referencePixels)
-                    fixed (int* pErrBase = _currentBestError)
-                    {
-                        if (!hasFocusAreas)
-                        {
-                            // Fast path: no focus weight lookup needed (all weights = 1)
-                            // Per 4 bytes (B,G,R,A) keep B,G,R and zero the alpha difference.
-                            Vector256<byte> alphaMask = Vector256.Create(
-                                (byte)255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0,
-                                255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0);
-                            int* lane = stackalloc int[8];
-
-                            for (int y = 0; y < height; y++)
-                            {
-                                Pixel* pRef = pRefBase + (minY + y) * refWidth + minX;
-                                int* pErr = pErrBase + (minY + y) * refWidth + minX;
-                                int x = 0;
-
-                                if (Avx2.IsSupported)
-                                {
-                                    // Accumulators reset per row so the int32 lanes cannot overflow.
-                                    Vector256<int> candAcc = Vector256<int>.Zero;
-                                    Vector256<int> currAcc = Vector256<int>.Zero;
-
-                                    for (; x + 8 <= width; x += 8)
-                                    {
-                                        Vector256<byte> cand = Avx.LoadVector256((byte*)pCand);
-                                        Vector256<byte> rf = Avx.LoadVector256((byte*)pRef);
-
-                                        // |cand - ref| per byte via two saturating subtracts.
-                                        Vector256<byte> d = Avx2.Or(
-                                            Avx2.SubtractSaturate(cand, rf),
-                                            Avx2.SubtractSaturate(rf, cand));
-                                        d = Avx2.And(d, alphaMask);
-
-                                        // Widen bytes to 16-bit, square and pair-sum into 32-bit lanes.
-                                        Vector256<short> dLo = Avx2.ConvertToVector256Int16(d.GetLower());
-                                        Vector256<short> dHi = Avx2.ConvertToVector256Int16(d.GetUpper());
-                                        candAcc = Avx2.Add(candAcc, Avx2.MultiplyAddAdjacent(dLo, dLo));
-                                        candAcc = Avx2.Add(candAcc, Avx2.MultiplyAddAdjacent(dHi, dHi));
-
-                                        currAcc = Avx2.Add(currAcc, Avx.LoadVector256(pErr));
-
-                                        pCand += 8;
-                                        pRef += 8;
-                                        pErr += 8;
-                                    }
-
-                                    Avx.Store(lane, candAcc);
-                                    fitnessCand += lane[0] + lane[1] + lane[2] + lane[3]
-                                                 + lane[4] + lane[5] + lane[6] + lane[7];
-                                    Avx.Store(lane, currAcc);
-                                    fitnessCurr += lane[0] + lane[1] + lane[2] + lane[3]
-                                                 + lane[4] + lane[5] + lane[6] + lane[7];
-                                }
-
-                                // Scalar remainder (and full row when AVX2 is unavailable).
-                                for (; x < width; x++)
-                                {
-                                    int rc = pCand->R - pRef->R;
-                                    int gc = pCand->G - pRef->G;
-                                    int bc = pCand->B - pRef->B;
-                                    fitnessCand += rc * rc + gc * gc + bc * bc;
-
-                                    fitnessCurr += *pErr;
-
-                                    pCand++;
-                                    pRef++;
-                                    pErr++;
-                                }
-
-                                pCand += pixelsToNextRow;
-                            }
-                        }
-                        else
-                        {
-                            // Scalar fallback (with focus weight support)
-                            for (int y = 0; y < height; y++)
-                            {
-                                int mapIndex = (minY + y) * screenWidth + minX;
-                                Pixel* pRef = pRefBase + (minY + y) * refWidth + minX;
-                                int* pErr = pErrBase + (minY + y) * refWidth + minX;
-                                for (int x = 0; x < width; x++)
-                                {
-                                    int weight = focusWeightMap[mapIndex];
-
-                                    int rc = pCand->R - pRef->R;
-                                    int gc = pCand->G - pRef->G;
-                                    int bc = pCand->B - pRef->B;
-                                    fitnessCand += (rc * rc + gc * gc + bc * bc) * weight;
-
-                                    fitnessCurr += (long)(*pErr) * weight;
-
-                                    pCand++;
-                                    pRef++;
-                                    pErr++;
-                                    mapIndex++;
-                                }
-
-                                pCand += pixelsToNextRow;
-                            }
-                        }
-                    }
-                }
-            }
-
-            candidate.UnlockBits(cdBd);
+            double acceptRate = _evalCount > 0 ? _acceptCount * 100.0 / _evalCount : 0;
+            string backend = Settings.UseSkiaRenderer ? "SkiaSharp CPU" : "GDI+";
+            return
+                $"Backend: {backend}\n" +
+                $"Phase timings over {_evalCount} evals ({acceptRate:F1}% accepted):\n" +
+                $"  Render:       {render,8:F0} ms ({render / total * 100,4:F1}%)\n" +
+                $"  Fitness:      {fitness,8:F0} ms ({fitness / total * 100,4:F1}%)\n" +
+                $"  Copy(accept): {copy,8:F0} ms ({copy / total * 100,4:F1}%)";
         }
 
         /// <summary>
-        /// Compute partial fitness for a bitmap in the given region vs the reference image.
+        /// Total squared error (unweighted) of the current-best image as rendered by this
+        /// Selector's own backend. This is the fitness the GA actually optimizes, so it is
+        /// the fair quality metric when comparing rendering backends (the Evolver's public
+        /// "fitness" is recomputed via GDI+ and is unfair to non-GDI+ backends).
         /// </summary>
-        private long ComputePartialFitness(Bitmap picture, int minX, int minY, int maxX, int maxY)
+        public long GetCurrentBestErrorSum()
         {
-            long fitness = 0;
-            int width = maxX - minX;
-            int height = maxY - minY;
-
-            BitmapData bd = picture.LockBits(
-                new Rectangle(minX, minY, width, height),
-                ImageLockMode.ReadOnly,
-                PixelFormat.Format32bppArgb);
-            BitmapData obd = _referenceBitmap.LockBits(
-                new Rectangle(minX, minY, width, height),
-                ImageLockMode.ReadOnly,
-                PixelFormat.Format32bppArgb);
-
-            var focusWeightMap = Settings.FocusWeightMap;
-            int screenWidth = Settings.ScreenWidth;
-            int pictureWidth = picture.Width;
-            int pixelsToNextRow = pictureWidth - width;
-
-            unchecked
-            {
-                unsafe
-                {
-                    Pixel* p1 = (Pixel*)bd.Scan0.ToPointer();
-                    Pixel* p2 = (Pixel*)obd.Scan0.ToPointer();
-
-                    for (int y = 0; y < height; y++)
-                    {
-                        int mapIndex = (minY + y) * screenWidth + minX;
-                        for (int x = 0; x < width; x++)
-                        {
-                            int r = p1->R - p2->R;
-                            int g = p1->G - p2->G;
-                            int b = p1->B - p2->B;
-                            int diff = r * r + g * g + b * b;
-                            fitness += diff * focusWeightMap[mapIndex];
-                            p1++;
-                            p2++;
-                            mapIndex++;
-                        }
-
-                        p1 += pixelsToNextRow;
-                        p2 += pixelsToNextRow;
-                    }
-                }
-            }
-
-            _referenceBitmap.UnlockBits(obd);
-            picture.UnlockBits(bd);
-
-            return fitness;
-        }
-
-        /// <summary>
-        /// Copy a dirty area from source bitmap to destination bitmap, and refresh the
-        /// cached per-pixel error for that region (the source is the newly accepted best).
-        /// </summary>
-        private void CopyDirtyArea(Bitmap source, Bitmap dest, int minX, int minY, int maxX, int maxY)
-        {
-            int width = maxX - minX;
-            int height = maxY - minY;
-            int refWidth = _referenceWidth;
-
-            BitmapData srcData = source.LockBits(
-                new Rectangle(minX, minY, width, height),
-                ImageLockMode.ReadOnly,
-                PixelFormat.Format32bppArgb);
-            BitmapData dstData = dest.LockBits(
-                new Rectangle(minX, minY, width, height),
-                ImageLockMode.WriteOnly,
-                PixelFormat.Format32bppArgb);
-
-            unchecked
-            {
-                unsafe
-                {
-                    byte* srcRow = (byte*)srcData.Scan0.ToPointer();
-                    byte* dstRow = (byte*)dstData.Scan0.ToPointer();
-                    fixed (Pixel* pRefBase = _referencePixels)
-                    fixed (int* pErrBase = _currentBestError)
-                    {
-                        for (int y = 0; y < height; y++)
-                        {
-                            Pixel* pSrc = (Pixel*)srcRow;
-                            Pixel* pDst = (Pixel*)dstRow;
-                            Pixel* pRef = pRefBase + (minY + y) * refWidth + minX;
-                            int* pErr = pErrBase + (minY + y) * refWidth + minX;
-                            for (int x = 0; x < width; x++)
-                            {
-                                *pDst = *pSrc;
-
-                                int r = pSrc->R - pRef->R;
-                                int g = pSrc->G - pRef->G;
-                                int b = pSrc->B - pRef->B;
-                                *pErr = r * r + g * g + b * b;
-
-                                pSrc++;
-                                pDst++;
-                                pRef++;
-                                pErr++;
-                            }
-                            srcRow += srcData.Stride;
-                            dstRow += dstData.Stride;
-                        }
-                    }
-                }
-            }
-
-            source.UnlockBits(srcData);
-            dest.UnlockBits(dstData);
-        }
-
-        private bool PolygonOverlapsDirtyArea(Rectangle rectangle, Chromosome chromosome)
-        {
-            var bb = chromosome.BoundingBox;
-            if (rectangle.Right < bb.Left || bb.Right < rectangle.Left)
-                return false;
-            if (rectangle.Bottom < bb.Top || bb.Bottom < rectangle.Top)
-                return false;
-            return true;
+            long sum = 0;
+            var err = _currentBestError;
+            for (int i = 0; i < err.Length; i++)
+                sum += err[i];
+            return sum;
         }
 
         #region Legacy methods (kept for DifferencePicture and full-image fitness)
@@ -650,21 +415,9 @@ namespace GABase
 
         #endregion
 
-        public struct Pixel
-        {
-            public byte B;
-            public byte G;
-            public byte R;
-            public byte A;
-        }
-
         public void Dispose()
         {
-            _candidateGraphics?.Dispose();
-            _currentBestGraphics?.Dispose();
-            _brush?.Dispose();
-            _currentBestBitmap?.Dispose();
-            _candidateBitmap?.Dispose();
+            _backend?.Dispose();
             _referenceBitmap?.Dispose();
         }
     }

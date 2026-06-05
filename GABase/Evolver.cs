@@ -436,6 +436,26 @@ namespace GABase
             }
         }
 
+        public void ResetPhaseTimings()
+        {
+            _selector?.ResetPhaseTimings();
+        }
+
+        public string GetPhaseTimings()
+        {
+            return _selector?.GetPhaseTimingsReport() ?? "Phase timings: (no selector)";
+        }
+
+        /// <summary>
+        /// Backend-consistent total error of the current-best image (the metric the GA
+        /// actually optimizes). Fair for comparing rendering backends, unlike the GDI+
+        /// recomputed fitness reported through PopulationUpdated.
+        /// </summary>
+        public long GetBackendFitness()
+        {
+            return _selector?.GetCurrentBestErrorSum() ?? 0;
+        }
+
         public string GetMutationStats()
         {
             const double baselineWeight = 1.0;
@@ -443,8 +463,7 @@ namespace GABase
 
             double totalWeight = 0;
             for (int i = 0; i < _mutationStats.Length; i++)
-            {
-                double weight = baselineWeight + (_mutationStats[i].SuccessRate * successWeight);
+            {                double weight = baselineWeight + (_mutationStats[i].SuccessRate * successWeight);
                 _mutationStats[i].Weight = weight;
                 totalWeight += weight;
             }

@@ -16,6 +16,17 @@ namespace GABaseBenchmarkTests
         [TestMethod]
         public void RunEvolutionBenchmark()
         {
+            RunBenchmark(useSkia: false);
+        }
+
+        [TestMethod]
+        public void RunEvolutionBenchmark_Skia()
+        {
+            RunBenchmark(useSkia: true);
+        }
+
+        private void RunBenchmark(bool useSkia)
+        {
             var imagePath = Path.Combine(GetSolutionDirectory(), "GABaseBenchmarkTests", "MonaLisa.jpg");
             
             if (!File.Exists(imagePath))
@@ -28,7 +39,13 @@ namespace GABaseBenchmarkTests
                 Settings.ScreenWidth = targetImage.Width;
                 Settings.ScreenHeight = targetImage.Height;
 
+                // Select the rasterization backend under test for this run.
+                Settings.UseSkiaRenderer = useSkia;
+
                 var evolver = new Evolver(targetImage, disableResize: true, resizeFactor: 4);
+
+                // Enable per-phase profiling so the report shows where time is spent.
+                Selector.ProfilingEnabled = true;
 
                 long finalFitnesse = 0;
                 int finalGeneration = 0;
@@ -56,12 +73,14 @@ namespace GABaseBenchmarkTests
                 var branchName = GetBranchName();
                 var timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss UTC");
                 var elapsedMs = stopwatch.ElapsedMilliseconds;
+                var rendererName = useSkia ? "SkiaSharp-CPU" : "GDI+";
 
                 var result = new StringBuilder();
                 result.AppendLine($"# Benchmark Results");
                 result.AppendLine();
                 result.AppendLine($"## Run Configuration");
                 result.AppendLine($"- Branch: {branchName}");
+                result.AppendLine($"- Renderer: {rendererName}");
                 result.AppendLine($"- Timestamp: {timestamp}");
                 result.AppendLine($"- Generations: {Generations}");
                 result.AppendLine($"- Target Image: MonaLisa.jpg");
@@ -70,15 +89,21 @@ namespace GABaseBenchmarkTests
                 result.AppendLine($"## Results");
                 result.AppendLine($"- Elapsed Time: {elapsedMs} ms");
                 result.AppendLine($"- Final Generation: {finalGeneration}");
-                result.AppendLine($"- Final Fitness: {finalFitnesse}");
+                result.AppendLine($"- Final Fitness (GDI+ recomputed): {finalFitnesse}");
+                result.AppendLine($"- Final Fitness (backend-measured): {evolver.GetBackendFitness()}");
                 result.AppendLine();
                 result.AppendLine("## Mutation Statistics");
                 result.AppendLine(mutationStats);
+                result.AppendLine();
+                result.AppendLine("## Phase Timings");
+                result.AppendLine("```");
+                result.AppendLine(evolver.GetPhaseTimings());
+                result.AppendLine("```");
 
                 var docsPath = Path.Combine(GetSolutionDirectory(), "docs");
                 Directory.CreateDirectory(docsPath);
 
-                var fileName = $"benchmark-{branchName.Replace("/", "-")}-{timestamp.Replace(" ", "-").Replace(":", "-").Replace("UTC", "UTC")}.md".ToLower();
+                var fileName = $"benchmark-{branchName.Replace("/", "-")}-{rendererName.Replace("+", "plus")}-{timestamp.Replace(" ", "-").Replace(":", "-").Replace("UTC", "UTC")}.md".ToLower();
                 var filePath = Path.Combine(docsPath, fileName);
                 File.WriteAllText(filePath, result.ToString());
 
