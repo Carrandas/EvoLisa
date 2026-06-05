@@ -156,7 +156,7 @@ namespace GABase
                     CurrentFitness = _pendingMigrantFitness;
                 }
 
-                double improvedPercentage = 0.0;
+                long costDelta = 0;
 
                 var selectedMutation = SelectWeightedMutation();
                 MutationType mutationType = selectedMutation;
@@ -172,20 +172,32 @@ namespace GABase
                         break;
                     case MutationType.AddPolygonPoint:
                         backup = _mutator.AddPolygonPointWithBackup(_popA);
+                        if (backup.WasDirty)
+                            costDelta = Settings.PolygonPointCost;
                         break;
                     case MutationType.RemovePolygonPoint:
                         backup = _mutator.RemovePolygonPointWithBackup(_popA);
+                        if (backup.WasDirty)
+                            costDelta = -Settings.PolygonPointCost;
                         break;
                     case MutationType.SwitchChromosomes:
                         backup = _mutator.SwitchChromosomesWithBackup(_popA);
                         break;
                     case MutationType.AddChromosome:
                         backup = _mutator.AddChromosomeWithBackup(_popA, _originalPictureBitmap, _differences);
-                        improvedPercentage = -1;
+                        if (backup.WasDirty)
+                        {
+                            int addedPoints = _popA.chromosomes[_popA.chromosomes.Count - 1].Polygon.Count;
+                            costDelta = Settings.PolygonCost + Settings.PolygonPointCost * addedPoints;
+                        }
                         break;
                     case MutationType.RemoveChromosome:
-                        improvedPercentage = 1;
                         backup = _mutator.RemoveChromosomeWithBackup(_popA);
+                        if (backup.WasDirty)
+                        {
+                            int removedPoints = backup.RemovedChromosome.Polygon.Count;
+                            costDelta = -(Settings.PolygonCost + Settings.PolygonPointCost * removedPoints);
+                        }
                         break;
                     default:
                         backup = new MutationBackup();
@@ -196,7 +208,7 @@ namespace GABase
                 {
                     _popA.IsDirty = false;
 
-                    bool accepted = _selector.EvaluateMutation(_popA, _popA.DirtyArea, improvedPercentage, out var newPartialFitness);
+                    bool accepted = _selector.EvaluateMutation(_popA, _popA.DirtyArea, costDelta, out var newPartialFitness);
 
                     if (accepted)
                     {

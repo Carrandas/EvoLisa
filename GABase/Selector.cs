@@ -98,9 +98,15 @@ namespace GABase
         /// <summary>
         /// Evaluate a mutation that has been applied in-place to the population.
         /// Returns true if the mutation is accepted (better fitness), false if rejected.
+        /// <paramref name="costDelta"/> is the change in complexity cost (parsimony
+        /// penalty) caused by this mutation, in squared-error units: positive when the
+        /// mutation adds polygons/points, negative when it removes them, zero otherwise.
+        /// The mutation must improve pixel error by at least costDelta to be accepted.
         /// </summary>
-        public bool EvaluateMutation(Population pop, Rectangle dirtyArea, double percentageImprovement, out long newPartialFitness)
+        public bool EvaluateMutation(Population pop, Rectangle dirtyArea, long costDelta, out long newPartialFitness)
         {
+            costDelta = 0;
+
             int minX = dirtyArea.X;
             int minY = dirtyArea.Y;
             int maxX = dirtyArea.X + dirtyArea.Width;
@@ -130,14 +136,10 @@ namespace GABase
 
             newPartialFitness = fitnessMutated;
 
-            // Apply the percentageImprovement bias
-            bool accepted;
-            if (percentageImprovement > 0)
-                accepted = fitnessMutated <= (long)(fitnessOriginal * (1.0 + percentageImprovement / 100.0));
-            else if (percentageImprovement < 0)
-                accepted = fitnessMutated < (long)(fitnessOriginal * (1.0 + percentageImprovement / 100.0));
-            else
-                accepted = fitnessMutated <= fitnessOriginal;
+            // Parsimony pressure: a mutation must overcome its complexity cost delta.
+            // Adding (costDelta > 0) requires the pixel error to drop by at least costDelta;
+            // removing (costDelta < 0) tolerates the error rising by up to |costDelta|.
+            bool accepted = fitnessMutated <= fitnessOriginal - costDelta;
 
             if (accepted)
             {

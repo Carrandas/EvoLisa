@@ -49,6 +49,26 @@ namespace GABase
 
         public static bool UseARGB = true;
 
+        // Parsimony pressure (MDL-style complexity cost), expressed in the same
+        // squared-error units as fitness. A mutation that increases complexity must
+        // reduce pixel error by at least its added cost to be accepted; a mutation
+        // that decreases complexity is tolerated even if it slightly worsens error.
+        // Fixed (non-adaptive) lambda. NOTE: fitness scale grows with resolution, so
+        // these may need retuning if the resize factor / image size changes a lot.
+        private static long _polygonCost = 500;
+        public static long PolygonCost
+        {
+            get { return _polygonCost; }
+            set { _polygonCost = value; }
+        }
+
+        private static long _polygonPointCost = 100;
+        public static long PolygonPointCost
+        {
+            get { return _polygonPointCost; }
+            set { _polygonPointCost = value; }
+        }
+
         private static int _focusWeight = 100;
         public static int FocusWeight
         {
