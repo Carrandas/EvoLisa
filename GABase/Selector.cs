@@ -3,6 +3,8 @@
 using System;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 
 #endregion
 
@@ -273,11 +275,58 @@ namespace GABase
                         if (!hasFocusAreas)
                         {
                             // Fast path: no focus weight lookup needed (all weights = 1)
+                            // Per 4 bytes (B,G,R,A) keep B,G,R and zero the alpha difference.
+                            Vector256<byte> alphaMask = Vector256.Create(
+                                (byte)255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0,
+                                255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0);
+                            int* lane = stackalloc int[8];
+
                             for (int y = 0; y < height; y++)
                             {
                                 Pixel* pRef = pRefBase + (minY + y) * refWidth + minX;
                                 int* pErr = pErrBase + (minY + y) * refWidth + minX;
-                                for (int x = 0; x < width; x++)
+                                int x = 0;
+
+                                if (Avx2.IsSupported)
+                                {
+                                    // Accumulators reset per row so the int32 lanes cannot overflow.
+                                    Vector256<int> candAcc = Vector256<int>.Zero;
+                                    Vector256<int> currAcc = Vector256<int>.Zero;
+
+                                    for (; x + 8 <= width; x += 8)
+                                    {
+                                        Vector256<byte> cand = Avx.LoadVector256((byte*)pCand);
+                                        Vector256<byte> rf = Avx.LoadVector256((byte*)pRef);
+
+                                        // |cand - ref| per byte via two saturating subtracts.
+                                        Vector256<byte> d = Avx2.Or(
+                                            Avx2.SubtractSaturate(cand, rf),
+                                            Avx2.SubtractSaturate(rf, cand));
+                                        d = Avx2.And(d, alphaMask);
+
+                                        // Widen bytes to 16-bit, square and pair-sum into 32-bit lanes.
+                                        Vector256<short> dLo = Avx2.ConvertToVector256Int16(d.GetLower());
+                                        Vector256<short> dHi = Avx2.ConvertToVector256Int16(d.GetUpper());
+                                        candAcc = Avx2.Add(candAcc, Avx2.MultiplyAddAdjacent(dLo, dLo));
+                                        candAcc = Avx2.Add(candAcc, Avx2.MultiplyAddAdjacent(dHi, dHi));
+
+                                        currAcc = Avx2.Add(currAcc, Avx.LoadVector256(pErr));
+
+                                        pCand += 8;
+                                        pRef += 8;
+                                        pErr += 8;
+                                    }
+
+                                    Avx.Store(lane, candAcc);
+                                    fitnessCand += lane[0] + lane[1] + lane[2] + lane[3]
+                                                 + lane[4] + lane[5] + lane[6] + lane[7];
+                                    Avx.Store(lane, currAcc);
+                                    fitnessCurr += lane[0] + lane[1] + lane[2] + lane[3]
+                                                 + lane[4] + lane[5] + lane[6] + lane[7];
+                                }
+
+                                // Scalar remainder (and full row when AVX2 is unavailable).
+                                for (; x < width; x++)
                                 {
                                     int rc = pCand->R - pRef->R;
                                     int gc = pCand->G - pRef->G;
