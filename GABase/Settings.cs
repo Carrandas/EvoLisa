@@ -49,6 +49,11 @@ namespace GABase
 
         public static bool UseARGB = true;
 
+        // Selects the rasterization backend used by Selector for the hot evaluation loop.
+        // false = GDI+ (System.Drawing), true = SkiaSharp CPU raster. Must be set before
+        // a Selector is constructed (i.e. before Evolver init / resize).
+        public static bool UseSkiaRenderer = true;
+
         // Parsimony pressure (MDL-style complexity cost), expressed in the same
         // squared-error units as fitness. A mutation that increases complexity must
         // reduce pixel error by at least its added cost to be accepted; a mutation
