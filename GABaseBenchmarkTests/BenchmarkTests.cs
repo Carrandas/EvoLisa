@@ -28,7 +28,7 @@ namespace GABaseBenchmarkTests
                 Settings.ScreenWidth = targetImage.Width;
                 Settings.ScreenHeight = targetImage.Height;
 
-                var evolver = new Evolver(targetImage);
+                var evolver = new Evolver(targetImage, disableResize: true, resizeFactor: 4);
 
                 long finalFitnesse = 0;
                 int finalGeneration = 0;
